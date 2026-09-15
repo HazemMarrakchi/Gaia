@@ -80,7 +80,8 @@ services:
       - kafka
 
   grafana:
-    image: grafana/grafana:latest
+    # pinned: "latest" auto-upgraded to a major that broke file provisioning
+    image: grafana/grafana:11.5.2
     container_name: gaia-grafana
     ports:
       - "3001:3000"
