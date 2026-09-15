@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion
+  namespace: {{ .Values.global.namespace }}
+  labels: {{- include "gaia.ingestion.selectorLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.ingestion.replicaCount }}
+  selector:
+    matchLabels: {{- include "gaia.ingestion.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "gaia.ingestion.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: ingestion
+          image: "{{ .Values.ingestion.image.repository }}:{{ .Values.ingestion.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.ingestion.service.port }}
+          env:
+            - name: KAFKA_BROKERS
+              value: {{ .Values.kafka.bootstrapServers }}
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres:5432/gaia
+          livenessProbe:
+            httpGet:
+              path: /health/sim
+              port: {{ .Values.ingestion.service.port }}
+            initialDelaySeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health/sim
+              port: {{ .Values.ingestion.service.port }}

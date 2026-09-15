@@ -1,0 +1,61 @@
+stages:
+  - build
+  - test
+  - image
+  - deploy
+
+variables:
+  DOCKER_IMAGE_PREFIX: ghcr.io/gaia-project
+
+# ── Build & Test ───────────────────────────────────────────────────
+build-engine:
+  stage: build
+  image: maven:3.9-eclipse-temurin-21
+  script:
+    - cd engine && mvn -q -B -DskipTests package
+  artifacts:
+    paths:
+      - engine/*/target/*.jar
+
+build-streaming:
+  stage: build
+  image: maven:3.9-eclipse-temurin-21
+  script:
+    - cd streaming && mvn -q -B package
+
+test-engine:
+  stage: test
+  image: maven:3.9-eclipse-temurin-21
+  script:
+    - cd engine && mvn -q test
+
+test-ai:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - cd ai-service && pip install -q -r requirements.txt && python -m pytest -q
+
+test-world-brain:
+  stage: test
+  image: node:20-slim
+  script:
+    - cd frontend/world-brain && npm ci && npm run test
+
+# ── Images ────────────────────────────────────────────────────────
+image-ingestion:
+  stage: image
+  image: docker:24
+  services:
+    - docker:24-dind
+  script:
+    - docker build -t $DOCKER_IMAGE_PREFIX/ingestion -f engine/ingestion-service/Dockerfile .
+    - docker push $DOCKER_IMAGE_PREFIX/ingestion
+
+# ── Deploy (preview) ─────────────────────────────────────────────
+deploy-preview:
+  stage: deploy
+  image: alpine:3.19
+  script:
+    - kubectl apply -f infra/k8s/manifests/preview.yaml
+  rules:
+    - if: $CI_MERGE_REQUEST_ID

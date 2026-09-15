@@ -1,0 +1,33 @@
+global:
+  namespace: gaia
+
+ingestion:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/gaia-project/ingestion
+    tag: latest
+  service:
+    port: 8081
+
+scenario:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/gaia-project/scenario
+    tag: latest
+  service:
+    port: 8082
+
+aiService:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/gaia-project/ai-service
+    tag: latest
+  service:
+    port: 8090
+
+redis:
+  host: "gaia-redis"
+  port: 6379
+
+kafka:
+  bootstrapServers: "kafka:9092"

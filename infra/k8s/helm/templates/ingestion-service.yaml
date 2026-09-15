@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingestion
+  namespace: {{ .Values.global.namespace }}
+  labels: {{- include "gaia.ingestion.selectorLabels" . | nindent 4 }}
+spec:
+  selector: {{- include "gaia.ingestion.selectorLabels" . | nindent 4 }}
+  ports:
+    - port: 80
+      targetPort: {{ .Values.ingestion.service.port }}

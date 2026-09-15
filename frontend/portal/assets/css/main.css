@@ -1,0 +1,25 @@
+:root {
+  --bg: #0d1117;
+  --card: #161b22;
+  --accent: #58a6ff;
+  --text: #e6edf3;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.page {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+a { color: var(--accent); }
+
+ul { padding-left: 1.2rem; }

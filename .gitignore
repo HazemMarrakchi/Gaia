@@ -1,0 +1,45 @@
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/timing.properties
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+.vite/
+coverage/
+*.local
+.nuxt/
+.output/
+.nitro/
+.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+
+# Docker / infra
+.env
+*.log
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.vscode-server
+.DS_Store
+Thumbs.db

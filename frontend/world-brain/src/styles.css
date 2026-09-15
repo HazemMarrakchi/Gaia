@@ -1,0 +1,33 @@
+/* GAIA World Brain — dark mission-control theme */
+:root {
+  color-scheme: dark;
+  --bg: #05080f;
+  --panel: #0b1220;
+  --accent: #37e0a2;
+  --text: #e6edf7;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.shell { padding: 1rem; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  border-bottom: 1px solid #1c2940;
+  padding-bottom: 0.6rem;
+}
+
+.topbar h1 { font-size: 1.2rem; margin: 0; }
+
+.tick::before { content: "tick "; color: var(--accent); }
+
+a { color: var(--accent); }
