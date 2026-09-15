@@ -3,7 +3,7 @@ import { RouterOutlet } from '@angular/router';
 import { GlobePanelComponent } from './core/globe/globe-panel.component';
 
 @Component({
-  selector: 'gb-root',
+  selector: 'app-root',
   standalone: true,
   imports: [RouterOutlet, GlobePanelComponent],
   template: `
