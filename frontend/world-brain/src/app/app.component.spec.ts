@@ -1,56 +1,34 @@
-import { Component, EventEmitter, Output } from '@angular/core';
-import { By } from '@angular/platform-browser';
-import { provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 
 import { AppComponent } from './app.component';
-import { GlobePanelComponent } from './core/globe/globe-panel.component';
-
-/**
- * Stand-in for the WebGL globe: shell tests must not need a rendering context.
- */
-@Component({
-  selector: 'gb-globe-panel',
-  standalone: true,
-  template: '<div class="globe-stub"></div>',
-})
-class GlobePanelStubComponent {
-  @Output() tick = new EventEmitter<number>();
-}
 
 describe('AppComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AppComponent],
       providers: [provideRouter([])],
-    })
-      .overrideComponent(AppComponent, {
-        remove: { imports: [GlobePanelComponent] },
-        add: { imports: [GlobePanelStubComponent] },
-      })
-      .compileComponents();
+    }).compileComponents();
   });
 
-  it('renders the mission control shell', () => {
+  it('renders the mission control shell with navigation', () => {
     const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
 
     const title = fixture.nativeElement.querySelector('.topbar h1') as HTMLElement;
     expect(title.textContent).toContain('GAIA');
+
+    const links = Array.from(
+      fixture.nativeElement.querySelectorAll('.nav a'),
+    ).map((a) => (a as HTMLElement).textContent?.trim());
+    expect(links).toEqual(['Live Globe', 'Scenarios', 'Replay']);
   });
 
-  it('reflects the live tick reported by the globe panel', () => {
+  it('renders exactly one router outlet (single globe instance)', () => {
     const fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
 
-    const globe = fixture.debugElement.query(By.directive(GlobePanelStubComponent))
-      .componentInstance as GlobePanelStubComponent;
-    globe.tick.emit(1042);
-    fixture.detectChanges();
-
-    expect(fixture.componentInstance.latestTick).toBe(1042);
-    expect((fixture.nativeElement.querySelector('.tick') as HTMLElement).textContent).toContain(
-      '1042',
-    );
+    expect(fixture.nativeElement.querySelectorAll('router-outlet').length).toBe(1);
+    expect(fixture.nativeElement.querySelectorAll('gb-globe-panel').length).toBe(0);
   });
 });

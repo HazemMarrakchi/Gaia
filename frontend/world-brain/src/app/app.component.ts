@@ -1,22 +1,27 @@
 import { Component } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
-import { GlobePanelComponent } from './core/globe/globe-panel.component';
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, GlobePanelComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive],
   template: `
     <main class="shell">
       <header class="topbar">
         <h1>GAIA — World Brain</h1>
-        <span class="tick" [textContent]="latestTick"></span>
+        <nav class="nav">
+          <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Live Globe</a>
+          <a routerLink="/scenarios" routerLinkActive="active">Scenarios</a>
+          <a routerLink="/replay" routerLinkActive="active">Replay</a>
+        </nav>
       </header>
-      <gb-globe-panel (tick)="latestTick = $event"></gb-globe-panel>
       <router-outlet></router-outlet>
     </main>
   `,
+  styles: [`
+    .nav { display: flex; gap: 1rem; margin-left: auto; }
+    .nav a { color: #94a3b8; text-decoration: none; font-size: 0.9rem; }
+    .nav a.active, .nav a:hover { color: var(--accent); }
+  `],
 })
-export class AppComponent {
-  latestTick = 0;
-}
+export class AppComponent {}
