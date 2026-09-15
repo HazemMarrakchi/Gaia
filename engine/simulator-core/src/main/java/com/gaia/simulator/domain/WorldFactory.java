@@ -50,16 +50,19 @@ public final class WorldFactory {
         var modules = new HashMap<String, com.gaia.simulator.engine.SimModule>();
 
         List<District> districts = IntStream.range(0, cfg.districts()).mapToObj(i ->
-                new District("district-" + i,
+                new District("district-" + i, regions[i % regions.length],
                         200_000L + (i * 7_331L) % 1_200_000L,
                         300.0 + (i * 17) % 400,
                         400.0 + (i * 23) % 350,
                         600_000 + (i * 1_019) % 600_000,
                         300 + (i * 31) % 900)).toList();
 
+        // Regional demand weights: persistent heterogeneity so regions behave
+        // differently (a heatwave in eu-west does not light up africa). Kept
+        // deterministic so same seed ⇒ same world ⇒ same events.
         List<GridNode> grid = IntStream.range(0, cfg.gridNodes()).mapToObj(i ->
                 new GridNode("node-" + i, regions[i % regions.length],
-                        180.0 + (i * 53) % 260)).toList();
+                        (180.0 + (i * 53) % 260) * REGION_DEMAND_WEIGHT[i % regions.length])).toList();
 
         // Balance the grid so generation comfortably covers baseline demand
         // (≈1.15×): the world is healthy until an event (heatwave, outage)
@@ -70,18 +73,20 @@ public final class WorldFactory {
 
         List<Plant> plants = IntStream.range(0, cfg.plants()).mapToObj(i -> {
             Plant.PlantType type = plantTypes[i % plantTypes.length];
-            double capacity = capacityPerPlant + (i * 67) % 80;
+            double capacity = (capacityPerPlant + (i * 67) % 80)
+                    * REGION_DEMAND_WEIGHT[i % regions.length];
             return new Plant(type.name().toLowerCase() + "-" + i, capacity,
-                    0.6 + 0.05 * (i % 7), type);
+                    0.6 + 0.05 * (i % 7), type, regions[i % regions.length]);
         }).toList();
 
         List<Vehicle> vehicles = IntStream.range(0, cfg.vehicles()).mapToObj(i ->
                 new Vehicle("v-" + i, vehicleTypes[i % vehicleTypes.length],
-                        5 + (i % 30), 0.2 + 0.01 * (i % 20))).toList();
+                        5 + (i % 30), 0.2 + 0.01 * (i % 20), regions[i % regions.length])).toList();
 
         List<Bank> banks = IntStream.range(0, cfg.banks()).mapToObj(i ->
                 new Bank("bank-" + i, 400 + (i * 97) % 900,
-                        120 + (i * 43) % 400, 180 + (i * 29) % 260)).toList();
+                        120 + (i * 43) % 400, 180 + (i * 29) % 260,
+                        regions[i % regions.length])).toList();
 
         modules.put("energy", new EnergyModule(plants, grid));
         modules.put("cities", new CitiesModule(districts));
@@ -92,6 +97,9 @@ public final class WorldFactory {
 
     private static final String[] regions = {"eu-west", "eu-east", "na-east", "na-west",
             "me", "asia-n", "asia-s", "africa"};
+
+    /** Regional demand/capacity weights (index-aligned with {@link #regions}). */
+    static final double[] REGION_DEMAND_WEIGHT = {1.25, 0.90, 1.15, 0.85, 1.05, 1.20, 0.95, 0.80};
 
     private static final Plant.PlantType[] plantTypes = Plant.PlantType.values();
     private static final Vehicle.VehicleType[] vehicleTypes = Vehicle.VehicleType.values();

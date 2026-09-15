@@ -65,13 +65,20 @@ public class IngestionController {
     }
 
     private static final long SEED = 42L;
-    private static final Instant START = Instant.parse("2026-09-15T00:00:00Z");
+    /**
+     * Sim-clock epoch: "now" floored to a 50 ms tick slot. Engine restarts
+     * therefore resume the clock instead of resetting it to midnight — with a
+     * reset, Flink watermarks (already ahead in event time) would drop every
+     * new event as late and the live pipeline would silently go dark.
+     */
+    private static final long STEP_MS = 50L;
+    private static final Instant START = Instant.ofEpochMilli(System.currentTimeMillis() / STEP_MS * STEP_MS);
 
     private final long entityBudget;
 
     private SimulationEngine newEngine() {
         return new SimulationEngine(
-                WorldFactory.entitiesWorld(entityBudget), SEED, 50L, START);
+                WorldFactory.entitiesWorld(entityBudget), SEED, STEP_MS, START);
     }
 
     @Scheduled(fixedDelayString = "${gaia.tick.period-ms:1000}")

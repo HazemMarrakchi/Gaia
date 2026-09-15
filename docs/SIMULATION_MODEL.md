@@ -54,18 +54,36 @@ no hard-coded finance shock.
 
 ## Event schema (Kafka `gaia.sim.events`)
 
+Every entity carries a region (`WorldFactory.regions`), so modules emit both
+**world-scope** summaries (`"region": "global"`) and **regional hot-spot** events
+with a real region key — this is what the World Brain globe and the
+`gaia_region_aggregates` geo-join visualize.
+
 ```json
 {
   "id": "uuid",
   "tick": 10420,
-  "ts": "2026-09-15T10:00:00Z",
+  "ts": "2026-09-15T23:16:39.050Z",
   "domain": "energy",
-  "type": "LOAD_SPIKE",
-  "region": "global",
+  "type": "GRID_STRESS",
+  "region": "eu-west",
   "severity": 0.62,
   "payload": {}
 }
 ```
+
+Regional hot-spots emitted today: `GRID_STRESS` (per strained region), `PLANT_OUTAGE`
+(region of the plant), `CITY_STRAIN` (per strained region), `SHIPMENT_DELAY` (worst
+delayed region), `LIQUIDITY_STRESS` (most liquidity-starved banking region).
+`EMISSIONS_SPIKE`, `FLOW_CHANGED`, `VAR_BREACH`, `PRICE_SHOCK`, `WATER_SHORTAGE` and
+`HOSPITAL_LOAD` remain world-scope.
+
+Heatwaves are **regional**: `applyPerturbation("heatwave", {region: "eu-west"})`
+(default `eu-west` — the documented "EU July heatwave") raises that region's demand
+while the rest of the world keeps running; `"global_heatwave"` stresses every region.
+The ingestion service boot-aligns the sim clock to the current instant (floored to a
+50 ms tick slot) so a restart moves time forward instead of resetting it — Flink
+event-time watermarks never see the clock jump backwards.
 
 Topic layout: `gaia.sim.events` (all events), `gaia.sim.aggregates` (per-domain
 sliding-window stats from Flink).

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -41,14 +42,18 @@ class DomainModuleTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void plantOutagePerturbationIncreasesShortages() {
         SimulationEngine e = new SimulationEngine(WorldFactory.defaultWorld(3, 4, 3, 4, 3),
                 7L, 50L, Instant.parse("2026-09-15T00:00:00Z"));
         e.run(50);
 
+        // Close a REAL plant (names are type-indexed: thermal-0, wind-1, ...).
+        var plants = (List<Map<String, Object>>) e.state().module("energy").state().get("plants");
+        String plantName = String.valueOf(plants.get(0).get("name"));
         double before = maxGridStress(e.run(100));
         e.state().module("energy").applyPerturbation("CLOSE_PLANT",
-                java.util.Map.of("plant", "thermal-A"));
+                java.util.Map.of("plant", plantName));
         double after = maxGridStress(e.run(100));
 
         assertThat(after).isGreaterThanOrEqualTo(before);

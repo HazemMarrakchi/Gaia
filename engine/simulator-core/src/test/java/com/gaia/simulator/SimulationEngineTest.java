@@ -43,8 +43,8 @@ class SimulationEngineTest {
     void stressedWorldEmitsAcrossAllDomains() {
         SimulationEngine e = new SimulationEngine(WorldFactory.defaultWorld(3, 4, 3, 4, 3),
                 7L, 50L, Instant.parse("2026-09-15T00:00:00Z"));
-        e.state().module("energy").applyPerturbation("HEATWAVE_EU_JULY", Map.of());
-        e.state().module("cities").applyPerturbation("HEATWAVE", Map.of());
+        e.state().module("energy").applyPerturbation("GLOBAL_HEATWAVE", Map.of());
+        e.state().module("cities").applyPerturbation("STRAIN", Map.of());
         e.state().module("transport").applyPerturbation("FUEL_SPIKE", Map.of());
         e.state().module("finance").applyPerturbation("SHOCK", Map.of());
 
@@ -53,6 +53,27 @@ class SimulationEngineTest {
 
         assertThat(domains).as("a stressed world must emit on all four domains")
                 .containsExactlyInAnyOrder("ENERGY", "CITIES", "TRANSPORT", "FINANCE");
+    }
+
+    /**
+     * Regional cascade: a heatwave pinned to one region must light up THAT
+     * region only — the engine reports hot-spots with real region keys, which
+     * is what the World Brain globe visualizes.
+     */
+    @Test
+    void regionalHeatwaveEmitsRegionalHotSpots() {
+        SimulationEngine e = new SimulationEngine(WorldFactory.defaultWorld(40, 30, 24, 80, 16),
+                42L, 50L, Instant.parse("2026-09-15T00:00:00Z"));
+        e.state().module("energy").applyPerturbation("HEATWAVE_EU_JULY", Map.of());
+
+        List<SimEvent> events = e.run(120);
+        var euWestStress = events.stream()
+                .filter(ev -> "GRID_STRESS".equals(ev.type()))
+                .filter(ev -> "eu-west".equals(ev.region()))
+                .toList();
+
+        assertThat(euWestStress).as("a heatwave in eu-west must emit eu-west hot-spots")
+                .isNotEmpty();
     }
 
     @Test

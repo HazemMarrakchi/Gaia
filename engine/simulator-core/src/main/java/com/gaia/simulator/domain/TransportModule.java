@@ -7,6 +7,7 @@ import com.gaia.simulator.domain.event.SimEvent;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -29,7 +30,7 @@ public final class TransportModule implements SimModule {
     public TransportModule copy() {
         List<Vehicle> copyVehicles = vehicles.stream()
                 .map(v -> {
-                    Vehicle copy = new Vehicle(v.id, v.type, v.averageTripTicks, v.emissionsPerTick);
+                    Vehicle copy = new Vehicle(v.id, v.type, v.averageTripTicks, v.emissionsPerTick, v.region);
                     copy.remainingTicks = v.remainingTicks;
                     return copy;
                 })
@@ -50,6 +51,8 @@ public final class TransportModule implements SimModule {
         double totalDelays = 0;
         double totalEmissions = 0;
         double flow = 0;
+        Map<String, Double> delaysByRegion = new HashMap<>();
+        Map<String, Integer> vehiclesByRegion = new HashMap<>();
 
         for (Vehicle v : vehicles) {
             double speedFactor = 1.0 - disruption * 0.5 - Math.max(0.0, (fuelPriceIndex - 1.0)) * 0.1;
@@ -57,10 +60,27 @@ public final class TransportModule implements SimModule {
             v.remainingTicks += delay;
             v.remainingTicks--;
             totalDelays += Math.max(0.0, delay);
+            delaysByRegion.merge(v.region, Math.max(0.0, delay), Double::sum);
+            vehiclesByRegion.merge(v.region, 1, Integer::sum);
 
             double emissions = v.emissionsPerTick * (1.0 + disruption * 2.0 + fuelPriceIndex * 0.2);
             totalEmissions += emissions;
             flow += v.isDelayed() ? 0.5 : 1.0;
+        }
+
+        // Regional hot-spot: the most delayed region reports SHIPMENT_DELAY.
+        String worstRegion = null;
+        double worstRatio = 0;
+        for (var entry : delaysByRegion.entrySet()) {
+            int count = vehiclesByRegion.getOrDefault(entry.getKey(), 0);
+            double ratio = count > 0 ? entry.getValue() / count : 0;
+            if (ratio > worstRatio) {
+                worstRatio = ratio;
+                worstRegion = entry.getKey();
+            }
+        }
+        if (worstRegion != null && worstRatio > 2) {
+            emit(ctx, "SHIPMENT_DELAY", worstRegion, Math.min(1.0, worstRatio / 5), "{}");
         }
 
         if (totalDelays > vehicles.size() * 2) {
@@ -107,15 +127,18 @@ public final class TransportModule implements SimModule {
         final VehicleType type;
         final double averageTripTicks;
         final double emissionsPerTick;
+        final String region;
         double remainingTicks = 1;
 
         public enum VehicleType { TRUCK, TRAIN, SHIP }
 
-        public Vehicle(String id, VehicleType type, double averageTripTicks, double emissionsPerTick) {
+        public Vehicle(String id, VehicleType type, double averageTripTicks,
+                       double emissionsPerTick, String region) {
             this.id = id;
             this.type = type;
             this.averageTripTicks = averageTripTicks;
             this.emissionsPerTick = emissionsPerTick;
+            this.region = region;
         }
 
         boolean isDelayed() {
@@ -123,7 +146,7 @@ public final class TransportModule implements SimModule {
         }
 
         Map<String, Object> snapshot() {
-            return Map.of("id", id, "type", type.name(), "remainingTicks", remainingTicks);
+            return Map.of("id", id, "type", type.name(), "region", region, "remainingTicks", remainingTicks);
         }
     }
 }

@@ -7,6 +7,7 @@ import com.gaia.simulator.domain.event.SimEvent;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -31,7 +32,7 @@ public final class FinanceModule implements SimModule {
     @Override
     public FinanceModule copy() {
         List<Bank> copyBanks = banks.stream()
-                .map(b -> new Bank(b.name, b.capital, b.exposure, b.minCapital))
+                .map(b -> new Bank(b.name, b.capital, b.exposure, b.minCapital, b.region))
                 .toList();
         FinanceModule m = new FinanceModule(copyBanks);
         m.volatility = volatility;
@@ -54,15 +55,33 @@ public final class FinanceModule implements SimModule {
 
         double liquidityStress = 0;
         double maxVar = 0;
+        Map<String, Double> liquidityByRegion = new HashMap<>();
+        Map<String, Integer> banksByRegion = new HashMap<>();
         for (Bank b : banks) {
             b.capital -= b.exposure * shock * 0.1;
             double var = b.exposure * volatility;
             maxVar = Math.max(maxVar, var);
             if (b.capital < b.minCapital) {
-                liquidityStress += (b.minCapital - b.capital) / b.minCapital;
+                double deficit = (b.minCapital - b.capital) / b.minCapital;
+                liquidityStress += deficit;
+                liquidityByRegion.merge(b.region, deficit, Double::sum);
+                banksByRegion.merge(b.region, 1, Integer::sum);
             }
         }
 
+        // Regional hot-spot: the most liquidity-starved banking region reports.
+        String worstRegion = null;
+        double worstStress = 0;
+        for (var entry : liquidityByRegion.entrySet()) {
+            double regionStress = entry.getValue() / Math.max(1, banksByRegion.get(entry.getKey()));
+            if (regionStress > worstStress) {
+                worstStress = regionStress;
+                worstRegion = entry.getKey();
+            }
+        }
+        if (worstRegion != null && worstStress > 0.3) {
+            emit(ctx, "LIQUIDITY_STRESS", worstRegion, Math.min(1.0, worstStress), "{}");
+        }
         if (liquidityStress > 0.3) {
             emit(ctx, "LIQUIDITY_STRESS", "global", Math.min(1.0, liquidityStress), "{}");
         }
@@ -114,19 +133,21 @@ public final class FinanceModule implements SimModule {
 
     public static final class Bank {
         final String name;
+        final String region;
         double capital;
         final double exposure;
         final double minCapital;
 
-        public Bank(String name, double capital, double exposure, double minCapital) {
+        public Bank(String name, double capital, double exposure, double minCapital, String region) {
             this.name = name;
             this.capital = capital;
             this.exposure = exposure;
             this.minCapital = minCapital;
+            this.region = region;
         }
 
         Map<String, Object> snapshot() {
-            return Map.of("name", name, "capital", capital, "exposure", exposure);
+            return Map.of("name", name, "region", region, "capital", capital, "exposure", exposure);
         }
     }
 }

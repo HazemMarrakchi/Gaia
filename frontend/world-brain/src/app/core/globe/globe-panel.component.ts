@@ -1,6 +1,9 @@
-import { Component, ElementRef, AfterViewInit, OnDestroy, Output, EventEmitter, inject } from '@angular/core';
+import {
+  AfterViewInit, Component, ElementRef, EventEmitter, OnDestroy, Output, inject,
+} from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 interface SimEventDto {
   id: string;
@@ -11,74 +14,176 @@ interface SimEventDto {
   severity: number;
 }
 
-interface Marker {
-  sprite: THREE.Sprite;
-  material: THREE.SpriteMaterial;
-  born: number;
-  life: number;
+interface RegionStat {
+  region: string;
+  lat: number;
+  lon: number;
+  events: number;
+  maxSeverity: number;
+  lastType: string;
+  lastDomain: string;
+  lastSeenTick: number;
 }
 
-const DOMAIN_COLORS: Record<string, string> = {
-  energy: '#ffaa00',
-  cities: '#4ade80',
-  transport: '#38bdf8',
-  finance: '#f472b6',
+interface Marker {
+  dot: THREE.Mesh;
+  halo: THREE.Mesh;
+  ring: THREE.Mesh;
+  stat: RegionStat;
+}
+
+const DOMAIN_COLORS: Record<string, number> = {
+  energy: 0xffaa00,
+  cities: 0x4ade80,
+  transport: 0x38bdf8,
+  finance: 0xf472b6,
 };
 
-const DOMAIN_ANCHOR: Record<string, [number, number]> = {
-  energy: [38, -98], // North America
-  cities: [48, 2], // Europe
-  transport: [35, 135], // East Asia
-  finance: [-25, 25], // Southern Africa
-};
+/** The 8 simulated regions (WorldFactory) with their real-world centroids. */
+const REGIONS: Array<{ region: string; lat: number; lon: number }> = [
+  { region: 'eu-west', lat: 50.5, lon: -4.0 },
+  { region: 'eu-east', lat: 51.0, lon: 24.0 },
+  { region: 'na-east', lat: 42.0, lon: -75.0 },
+  { region: 'na-west', lat: 40.0, lon: -120.0 },
+  { region: 'me', lat: 24.0, lon: 46.5 },
+  { region: 'asia-n', lat: 52.0, lon: 100.0 },
+  { region: 'asia-s', lat: 21.0, lon: 78.0 },
+  { region: 'africa', lat: 6.0, lon: 20.0 },
+];
 
 const API = 'http://localhost:8181';
+const R = 5; // earth radius
 
 @Component({
   selector: 'gb-globe-panel',
   standalone: true,
-  template: `<div #viewport class="globe"></div>`,
-  styles: [`.globe { width: 100%; height: 70vh; }`],
+  template: `
+    <div class="wrap">
+      <div #viewport class="globe"></div>
+      <div class="panel">
+        <div class="panel-title">Live regional hot-spots</div>
+        <div class="rows">
+          @for (s of stats; track s.region) {
+            <div class="row">
+              <span class="name">{{ s.region }}</span>
+              <div class="bar">
+                <div class="fill" [style.width.%]="s.maxSeverity * 100"
+                     [style.background]="colorOf(s)"></div>
+              </div>
+              <span class="val">{{ s.events }}</span>
+            </div>
+          }
+        </div>
+        <div class="legend">
+          <span><i class="dot" style="background:#ffaa00"></i>energy</span>
+          <span><i class="dot" style="background:#4ade80"></i>cities</span>
+          <span><i class="dot" style="background:#38bdf8"></i>transport</span>
+          <span><i class="dot" style="background:#f472b6"></i>finance</span>
+        </div>
+      </div>
+      <div class="hint">drag to orbit · scroll to zoom</div>
+    </div>
+  `,
+  styles: [`
+    .wrap { position: relative; }
+    .globe { width: 100%; height: 72vh; min-height: 420px; }
+    .panel {
+      position: absolute; top: 14px; right: 14px; width: 250px;
+      background: rgba(4, 10, 22, .72); border: 1px solid rgba(90, 140, 220, .25);
+      border-radius: 10px; padding: 10px 12px; backdrop-filter: blur(6px);
+      font-family: ui-monospace, monospace; font-size: 12px; color: #cbd5e1;
+    }
+    .panel-title { color: #7dd3fc; letter-spacing: .08em; margin-bottom: 8px; font-size: 11px; }
+    .row { display: grid; grid-template-columns: 62px 1fr 26px; align-items: center; gap: 6px; margin: 4px 0; }
+    .name { color: #94a3b8; }
+    .bar { height: 7px; background: rgba(255,255,255,.08); border-radius: 4px; overflow: hidden; }
+    .fill { height: 100%; border-radius: 4px; transition: width .6s ease; }
+    .val { text-align: right; color: #e2e8f0; }
+    .legend { display: flex; gap: 10px; margin-top: 10px; font-size: 10px; color: #94a3b8; }
+    .legend .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; }
+    .hint { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+      color: #64748b; font-size: 11px; letter-spacing: .05em; }
+  `],
 })
 export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   @Output() tick: EventEmitter<number> = new EventEmitter<number>();
 
+  stats: RegionStat[] = REGIONS.map((r) => ({
+    region: r.region, lat: r.lat, lon: r.lon,
+    events: 0, maxSeverity: 0, lastType: '—', lastDomain: '', lastSeenTick: -1,
+  }));
+
   private http = inject(HttpClient);
   private renderer?: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(45, 16 / 9, 0.1, 1000);
+  private camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 400);
+  private controls?: OrbitControls;
+  private earth = new THREE.Group();
+  private cloudMesh?: THREE.Mesh;
+  private markers = new Map<string, Marker>();
+  private pulses: Array<{ mesh: THREE.Mesh; born: number; life: number }> = [];
   private rafId = 0;
   private pollId = 0;
-  private markers: Map<string, Marker> = new Map();
   private lastEventIds = new Set<string>();
-  private sphereRadius = 5;
   private clock = new THREE.Clock();
+  private sunDirection = new THREE.Vector3(1, 0.35, 0.6).normalize();
+  private raycaster = new THREE.Raycaster();
+  private pointer = new THREE.Vector2(-2, -2);
+  private hoverRegion: string | null = null;
 
   constructor(private el: ElementRef) {}
 
+  colorOf(s: RegionStat): string {
+    return '#' + (DOMAIN_COLORS[s.lastDomain] ?? 0x64748b).toString(16).padStart(6, '0');
+  }
+
   ngAfterViewInit(): void {
-    const host = this.el.nativeElement.querySelector('.globe');
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    const host: HTMLElement = this.el.nativeElement.querySelector('.globe');
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(host.clientWidth, host.clientHeight);
     host.appendChild(this.renderer.domElement);
 
-    const geometry = new THREE.SphereGeometry(this.sphereRadius, 64, 64);
-    const material = new THREE.MeshBasicMaterial({ color: 0x113355, wireframe: true });
-    this.scene.add(new THREE.Mesh(geometry, material));
-    this.camera.position.z = 14;
+    this.camera.position.set(0, 4.2, 15.5);
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.08;
+    this.controls.minDistance = 7.5;
+    this.controls.maxDistance = 40;
 
-    host.addEventListener('mousemove', (e: MouseEvent) => {
-      this.camera.position.x = (e.clientX / window.innerWidth - 0.5) * 4;
-      this.camera.position.y = -(e.clientY / window.innerHeight - 0.5) * 4;
+    this.scene.add(new THREE.AmbientLight(0x334466, 0.55));
+    const sun = new THREE.DirectionalLight(0xfff4e0, 2.4);
+    sun.position.copy(this.sunDirection).multiplyScalar(60);
+    this.scene.add(sun);
+
+    this.scene.add(this.buildStars());
+    this.earth.add(this.buildEarth());
+    this.earth.add(this.buildClouds());
+    this.scene.add(this.buildAtmosphere());
+    REGIONS.forEach((r) => this.addRegionMarker(r));
+    this.scene.add(this.earth);
+
+    host.addEventListener('pointermove', (e: PointerEvent) => {
+      const rect = host.getBoundingClientRect();
+      this.pointer.set(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
     });
+    window.addEventListener('resize', this.onResize);
 
-    this.pollId = window.setInterval(() => this.pollSim(), 1000);
+    this.pollId = window.setInterval(() => this.pollSim(), 2000);
     this.pollSim();
 
     const loop = () => {
       const dt = this.clock.getDelta();
-      this.scene.rotateY(0.12 * dt);
-      this.fade(dt);
+      const t = this.clock.elapsedTime;
+      this.earth.rotation.y = t * 0.02; // slow planet rotation
+      if (this.cloudMesh) this.cloudMesh.rotation.y += dt * 0.0045;
+      this.animateMarkers(t);
+      this.animatePulses(t);
+      this.updateHover();
+      this.controls?.update();
       this.renderer?.render(this.scene, this.camera);
       this.rafId = requestAnimationFrame(loop);
     };
@@ -88,9 +193,26 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     window.clearInterval(this.pollId);
+    window.removeEventListener('resize', this.onResize);
     cancelAnimationFrame(this.rafId);
+    this.controls?.dispose();
+    this.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      mesh.geometry?.dispose?.();
+      const mat = mesh.material as THREE.Material | THREE.Material[];
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+      else mat?.dispose?.();
+    });
     this.renderer?.dispose();
   }
+
+  private onResize = () => {
+    const host: HTMLElement | null = this.el.nativeElement.querySelector('.globe');
+    if (!host || !this.renderer) return;
+    this.camera.aspect = host.clientWidth / Math.max(1, host.clientHeight);
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(host.clientWidth, host.clientHeight);
+  };
 
   private pollSim(): void {
     this.http
@@ -98,91 +220,267 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
       .subscribe({ next: (h) => this.tick.emit(h.tick), error: () => {} });
 
     this.http
-      .get<SimEventDto[]>(`${API}/events?limit=40`)
+      .get<SimEventDto[]>(`${API}/events?limit=150`)
       .subscribe({ next: (events) => this.applyEvents(events), error: () => {} });
   }
 
   private applyEvents(events: SimEventDto[]): void {
-    const ids = new Set(events.map((e) => e.id));
-    for (const event of events.slice(0, 14)) {
-      if (this.lastEventIds.has(event.id)) continue;
-      const color = DOMAIN_COLORS[event.domain] ?? '#94a3b8';
-      const anchor = DOMAIN_ANCHOR[event.domain] ?? [0, 0];
-      const jitter = [Math.sin(event.id.length), Math.cos(event.id.charCodeAt(0))];
-      const lat = anchor[0] + jitter[0] * 6;
-      const lon = anchor[1] + jitter[1] * 8;
-      this.spawn(event.id, color, lat, lon, event.severity);
-      if (this.markers.size > 90) {
-        const oldest = Array.from(this.markers.keys())[0];
-        this.remove(oldest);
+    const fresh = events.filter((e) => !this.lastEventIds.has(e.id));
+    this.lastEventIds = new Set(events.map((e) => e.id));
+
+    for (const s of this.stats) {
+      s.events = 0;
+      s.maxSeverity = 0;
+    }
+    for (const e of events) {
+      const stat = this.stats.find((s) => s.region === e.region);
+      if (!stat) continue;
+      stat.events++;
+      stat.maxSeverity = Math.max(stat.maxSeverity, e.severity);
+      if (e.tick > stat.lastSeenTick) {
+        stat.lastSeenTick = e.tick;
+        stat.lastType = e.type;
+        stat.lastDomain = e.domain;
       }
     }
-    this.lastEventIds = ids;
+
+    // pulses only for genuinely new events (poll backfills stay silent)
+    for (const e of fresh.slice(0, 12)) {
+      const stat = this.stats.find((s) => s.region === e.region);
+      if (stat) {
+        this.spawnPulse(stat, false);
+      } else {
+        this.spawnWorldPulse(); // world-scope ("global") event
+      }
+    }
   }
 
-  private spawn(id: string, color: string, lat: number, lon: number, severity: number): void {
-    const pos = this.toCartesian(this.sphereRadius * 1.035, lat, lon);
-    const texture = this.makeGlow(color);
-    const material = new THREE.SpriteMaterial({
-      map: texture,
-      color: 0xffffff,
+  // ── scene construction ────────────────────────────────────────────────
+
+  private loadTexture(path: string, srgb = false): THREE.Texture {
+    const tex = new THREE.TextureLoader().load(`assets/planets/${path}`);
+    if (srgb) tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  private buildEarth(): THREE.Mesh {
+    const day = this.loadTexture('earth_atmos_2048.jpg', true);
+    const night = this.loadTexture('earth_lights_2048.png', true);
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        dayMap: { value: day },
+        nightMap: { value: night },
+        sunDirection: { value: this.sunDirection },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vWorldNormal;
+        void main() {
+          vUv = uv;
+          vWorldNormal = normalize(mat3(modelMatrix) * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D dayMap;
+        uniform sampler2D nightMap;
+        uniform vec3 sunDirection;
+        varying vec2 vUv;
+        varying vec3 vWorldNormal;
+        void main() {
+          vec3 dayColor = texture2D(dayMap, vUv).rgb;
+          vec3 nightColor = texture2D(nightMap, vUv).rgb * 1.5;
+          float sun = dot(normalize(vWorldNormal), normalize(sunDirection));
+          float blend = smoothstep(-0.12, 0.28, sun);
+          vec3 color = mix(nightColor, dayColor * (0.4 + 0.72 * max(sun, 0.0)), blend);
+          gl_FragColor = vec4(color, 1.0);
+        }
+      `,
+    });
+    return new THREE.Mesh(new THREE.SphereGeometry(R, 96, 96), material);
+  }
+
+  private buildClouds(): THREE.Mesh {
+    return new THREE.Mesh(
+      new THREE.SphereGeometry(R * 1.012, 64, 64),
+      new THREE.MeshLambertMaterial({
+        map: this.loadTexture('earth_clouds_1024.png', true),
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+      }),
+    );
+  }
+
+  private buildAtmosphere(): THREE.Mesh {
+    const material = new THREE.ShaderMaterial({
+      uniforms: { sunDirection: { value: this.sunDirection } },
+      vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vWorldNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vWorldNormal = normalize(mat3(modelMatrix) * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 sunDirection;
+        varying vec3 vNormal;
+        varying vec3 vWorldNormal;
+        void main() {
+          float rim = pow(0.72 - dot(vNormal, vec3(0, 0, 1.0)), 2.6);
+          float sun = dot(normalize(vWorldNormal), normalize(sunDirection));
+          vec3 dayTint = vec3(0.35, 0.58, 1.0);
+          vec3 nightTint = vec3(0.10, 0.18, 0.42);
+          vec3 tint = mix(nightTint, dayTint, smoothstep(-0.3, 0.35, sun));
+          gl_FragColor = vec4(tint, 1.0) * clamp(rim, 0.0, 1.0) * 0.9;
+        }
+      `,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
       transparent: true,
-      opacity: 0.95,
       depthWrite: false,
     });
-    const sprite = new THREE.Sprite(material);
-    sprite.position.copy(pos);
-    const scale = 0.45 + severity * 1.1;
-    sprite.scale.set(scale, scale, 1);
-    this.scene.add(sprite);
-    this.markers.set(id, { sprite, material, born: this.clock.elapsedTime, life: 6 });
+    return new THREE.Mesh(new THREE.SphereGeometry(R * 1.14, 64, 64), material);
   }
 
-  private fade(dt: number): void {
-    const now = this.clock.elapsedTime;
-    for (const id of Array.from(this.markers.keys())) {
-      const m = this.markers.get(id)!;
-      const age = now - m.born;
-      if (age >= m.life) {
-        this.remove(id);
-        continue;
-      }
-      m.material.opacity = 0.95 * (1 - age / m.life);
-      const grow = 1 + 0.8 * (age / m.life);
-      m.material.rotation += dt * 0.6;
+  private buildStars(): THREE.Points {
+    const count = 2200;
+    const positions = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const v = new THREE.Vector3().randomDirection().multiplyScalar(60 + Math.random() * 90);
+      positions.set([v.x, v.y, v.z], i * 3);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    return new THREE.Points(geometry, new THREE.PointsMaterial({
+      color: 0xbfd4ff, size: 0.42, sizeAttenuation: true, transparent: true, opacity: 0.85,
+    }));
+  }
+
+  // ── region hot-spots ──────────────────────────────────────────────────
+
+  private addRegionMarker(r: { region: string; lat: number; lon: number }): void {
+    const stat: RegionStat = this.stats.find((s) => s.region === r.region)!;
+    const position = this.toCartesian(R * 1.005, r.lat, r.lon);
+    const quaternion = this.orientMarker(r.lat, r.lon);
+
+    const dot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.07, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0x94a3b8 }),
+    );
+    dot.position.copy(position);
+
+    const halo = new THREE.Mesh(
+      new THREE.RingGeometry(0.11, 0.2, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0x94a3b8, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false,
+      }),
+    );
+    halo.position.copy(position);
+    halo.quaternion.copy(quaternion);
+
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.16, 0.23, 40),
+      new THREE.MeshBasicMaterial({
+        color: 0x94a3b8, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false,
+      }),
+    );
+    ring.position.copy(position);
+    ring.quaternion.copy(quaternion);
+    ring.userData['region'] = r.region;
+
+    this.earth.add(dot, halo, ring);
+    this.markers.set(r.region, { dot, halo, ring, stat });
+  }
+
+  private animateMarkers(t: number): void {
+    for (const m of this.markers.values()) {
+      const active = m.stat.events > 0;
+      const severity = m.stat.maxSeverity;
+      const color = active ? (DOMAIN_COLORS[m.stat.lastDomain] ?? 0x64748b) : 0x64748b;
+      (m.dot.material as THREE.MeshBasicMaterial).color.setHex(color);
+      (m.halo.material as THREE.MeshBasicMaterial).color.setHex(color);
+
+      // size & breathing track live severity
+      const heat = active ? 0.5 + severity : 0.35;
+      const breathe = 1 + 0.16 * Math.sin(t * (1.2 + severity * 2.4));
+      m.dot.scale.setScalar(heat * breathe);
+      m.halo.scale.setScalar(heat * (1 + 0.1 * Math.sin(t * (2 + severity * 3))));
+      (m.halo.material as THREE.MeshBasicMaterial).opacity = active ? 0.55 : 0.25;
+
+      // the ring "beats" outward continuously — faster when hotter
+      const cycle = (t * (0.5 + severity * 1.4)) % 1;
+      m.ring.scale.setScalar(1 + cycle * 2.4);
+      (m.ring.material as THREE.MeshBasicMaterial).opacity =
+        (active ? 0.65 : 0.12) * (1 - cycle);
     }
   }
 
-  private remove(id: string): void {
-    const m = this.markers.get(id);
-    if (!m) return;
-    this.scene.remove(m.sprite);
-    m.material.map?.dispose();
-    m.material.dispose();
-    this.markers.delete(id);
+  private animatePulses(t: number): void {
+    this.pulses = this.pulses.filter((p) => {
+      const age = (t - p.born) / p.life;
+      if (age >= 1) {
+        this.earth.remove(p.mesh);
+        p.mesh.geometry.dispose();
+        (p.mesh.material as THREE.Material).dispose();
+        return false;
+      }
+      p.mesh.scale.setScalar(1 + age * 3.2);
+      (p.mesh.material as THREE.MeshBasicMaterial).opacity = 0.75 * (1 - age);
+      return true;
+    });
   }
 
-  private makeGlow(color: string): THREE.Texture {
-    const size = 64;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d')!;
-    const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-    g.addColorStop(0, color);
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, size, size);
-    return new THREE.CanvasTexture(canvas);
+  private spawnPulse(stat: RegionStat, worldScope: boolean): void {
+    const color = DOMAIN_COLORS[stat.lastDomain] ?? 0x94a3b8;
+    const pulse = new THREE.Mesh(
+      new THREE.SphereGeometry(worldScope ? R * 1.02 : 0.16, 24, 24),
+      new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false,
+      }),
+    );
+    if (!worldScope) {
+      pulse.position.copy(this.toCartesian(R * 1.02, stat.lat, stat.lon));
+    }
+    this.earth.add(pulse);
+    this.pulses.push({ mesh: pulse, born: this.clock.elapsedTime, life: worldScope ? 1.6 : 1.1 });
+  }
+
+  private spawnWorldPulse(): void {
+    this.spawnPulse({
+      region: 'global', lat: 0, lon: 0, events: 0, maxSeverity: 0,
+      lastType: '', lastDomain: '', lastSeenTick: 0,
+    }, true);
+  }
+
+  private updateHover(): void {
+    if (!this.renderer) return;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const rings = Array.from(this.markers.values()).map((m) => m.ring);
+    const hit = this.raycaster.intersectObjects(rings, false)[0]?.object;
+    const region = (hit?.userData?.['region'] as string) ?? null;
+    if (region !== this.hoverRegion) {
+      this.hoverRegion = region;
+      this.renderer.domElement.title = region
+        ? `${region} — ${this.stats.find((s) => s.region === region)?.lastType ?? ''}`
+        : '';
+    }
+  }
+
+  private orientMarker(lat: number, lon: number): THREE.Quaternion {
+    const up = this.toCartesian(1, lat, lon).normalize();
+    return new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), up);
   }
 
   private toCartesian(r: number, lat: number, lon: number): THREE.Vector3 {
     const phi = THREE.MathUtils.degToRad(90 - lat);
-    const theta = THREE.MathUtils.degToRad(lon);
+    const theta = THREE.MathUtils.degToRad(lon + 180);
     return new THREE.Vector3(
-      r * Math.sin(phi) * Math.cos(theta),
+      -r * Math.sin(phi) * Math.cos(theta),
       r * Math.cos(phi),
-      r * Math.sin(phi) * Math.sin(theta)
+      r * Math.sin(phi) * Math.sin(theta),
     );
   }
 }

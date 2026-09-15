@@ -7,6 +7,7 @@ import com.gaia.simulator.domain.event.SimEvent;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -21,23 +22,28 @@ public final class EnergyModule implements SimModule {
 
     private final List<Plant> plants;
     private final List<GridNode> grid;
-    private double heatwaveIntensity = 0.0; // 0..1
+    /** Distinct region keys present in this world's grid. */
+    private final List<String> regions;
+    /** Per-region heatwave intensity (0..1) — heatwaves are regional events. */
+    private final Map<String, Double> heatwave = new HashMap<>();
 
     public EnergyModule(List<Plant> plants, List<GridNode> grid) {
         this.plants = plants;
         this.grid = grid;
+        this.regions = grid.stream().map(g -> g.region).distinct().sorted().toList();
+        regions.forEach(r -> heatwave.put(r, 0.0));
     }
 
     @Override
     public EnergyModule copy() {
         List<Plant> copyPlants = plants.stream()
-                .map(p -> new Plant(p.name, p.capacityMw, p.efficiency, p.type, p.status))
+                .map(p -> new Plant(p.name, p.capacityMw, p.efficiency, p.type, p.region, p.status))
                 .toList();
         List<GridNode> copyGrid = grid.stream()
                 .map(g -> new GridNode(g.id, g.region, g.baseLoadMw))
                 .toList();
         EnergyModule m = new EnergyModule(copyPlants, copyGrid);
-        m.heatwaveIntensity = heatwaveIntensity;
+        m.heatwave.putAll(heatwave);
         return m;
     }
 
@@ -48,41 +54,63 @@ public final class EnergyModule implements SimModule {
 
     @Override
     public void tick(TickContext ctx) {
-        // 1. Weather drives heatwave intensity (mean-reverting random walk).
-        double target = heatwaveIntensity;
-        if (ctx.rng().nextDouble() < 0.01) {
-            target = Math.min(1.0, heatwaveIntensity + ctx.rng().nextGaussian() * 0.15);
+        // 1. Weather: heatwaves build and decay per region (mean-reverting walk).
+        if (ctx.rng().nextDouble() < 0.08 && !regions.isEmpty()) {
+            String region = regions.get((int) (ctx.rng().nextDouble() * regions.size()));
+            heatwave.merge(region, ctx.rng().nextGaussian() * 0.15,
+                    (old, delta) -> Math.max(0.0, Math.min(1.0, old + delta)));
         }
-        heatwaveIntensity += (target - heatwaveIntensity) * 0.2;
+        regions.forEach(r -> heatwave.computeIfPresent(r, (k, v) -> v * 0.995));
 
-        // 2. Compute demand from weather + external region strain + noise.
-        double demand = grid.stream().mapToDouble(g -> g.baseLoadMw).sum()
-                * (1.0 + 0.5 * heatwaveIntensity)
-                * (1.0 + 0.02 * ctx.rng().nextGaussian());
-
-        // 3. Dispatch plants (batteries first within whatever capacity exists).
-        double generated = 0;
+        // 2. Per-region demand (weather + noise) and available generation.
+        Map<String, Double> demandByRegion = new HashMap<>();
+        Map<String, Double> capacityByRegion = new HashMap<>();
+        double demand = 0;
+        for (String r : regions) {
+            double heat = heatwave.getOrDefault(r, 0.0);
+            double d = grid.stream().filter(n -> n.region.equals(r))
+                    .mapToDouble(n -> n.baseLoadMw).sum()
+                    * (1.0 + 0.5 * heat)
+                    * (1.0 + 0.04 * ctx.rng().nextGaussian());
+            demandByRegion.put(r, d);
+            demand += d;
+        }
         for (Plant p : plants) {
-            if (p.status == Plant.Status.OUTAGE) {
-                continue;
-            }
-            generated += p.capacityMw * p.efficiency;
-            if (ctx.rng().nextDouble() < 0.0005) {
+            double available = p.status == Plant.Status.OUTAGE ? 0.0 : p.capacityMw * p.efficiency;
+            capacityByRegion.merge(p.region, available, Double::sum);
+        }
+
+        // 3. Dispatch: plant outages are regional incidents.
+        for (Plant p : plants) {
+            if (p.status == Plant.Status.OPERATIONAL && ctx.rng().nextDouble() < 0.0005) {
                 p.status = Plant.Status.OUTAGE;
-                emit(ctx, "PLANT_OUTAGE", "global", 0.9,
+                emit(ctx, "PLANT_OUTAGE", p.region, 0.9,
                         "{\"plant\":\"%s\"}".formatted(p.name));
             }
         }
-        double shortage = Math.max(0.0, demand - generated);
 
-        // 4. Price reacts to shortage + heatwave.
-        double price = basePrice() * (1.0 + shortage * 0.5 + heatwaveIntensity * 0.3);
+        // 4. Regional hot-spots: every strained region reports GRID_STRESS.
+        for (String r : regions) {
+            double d = demandByRegion.get(r);
+            double shortage = Math.max(0.0, d - capacityByRegion.getOrDefault(r, 0.0));
+            if (d > 0 && shortage > 0.05 * d) {
+                emit(ctx, "GRID_STRESS", r, Math.min(1.0, shortage / d), "{}");
+            }
+        }
+
+        // 5. World-wide balance + price reacts to total shortage/heat.
+        double generated = capacityByRegion.values().stream().mapToDouble(Double::doubleValue).sum();
+        double shortage = Math.max(0.0, demand - generated);
+        double price = basePrice() * (1.0 + shortage * 0.5
+                + heatwave.values().stream().mapToDouble(Double::doubleValue).average().orElse(0) * 0.3);
 
         if (shortage > 0.05 * demand) {
             emit(ctx, "GRID_STRESS", "global", Math.min(1.0, shortage / demand), "{}");
         }
+        final double totalDemand = demand;
         double totalBaseLoad = grid.stream().mapToDouble(g -> g.baseLoadMw).sum();
-        grid.forEach(n -> updateLoadPrice(n, demand, price, totalBaseLoad));
+        grid.forEach(n -> updateLoadPrice(n, demandByRegion.getOrDefault(n.region, totalDemand),
+                price, totalBaseLoad));
     }
 
     private void updateLoadPrice(GridNode node, double demand, double price, double totalBaseLoad) {
@@ -102,7 +130,9 @@ public final class EnergyModule implements SimModule {
 
     @Override
     public Map<String, Object> state() {
-        return Map.of("heatwaveIntensity", heatwaveIntensity,
+        return Map.of("heatwaveIntensity", heatwave.values().stream()
+                        .mapToDouble(Double::doubleValue).max().orElse(0),
+                "heatwaveByRegion", Map.copyOf(heatwave),
                 "plants", plants.stream().map(Plant::snapshot).toList(),
                 "grid", grid.stream().map(GridNode::snapshot).toList());
     }
@@ -110,7 +140,15 @@ public final class EnergyModule implements SimModule {
     @Override
     public void applyPerturbation(String type, Map<String, Object> params) {
         switch (type.toLowerCase()) {
-            case "heatwave", "heatwave_eu_july" -> heatwaveIntensity = 0.85;
+            case "heatwave", "heatwave_eu_july" -> {
+                // Regional by nature: defaults to the documented EU July heatwave.
+                String region = String.valueOf(params.getOrDefault("region", "eu-west"));
+                if (!regions.contains(region)) {
+                    region = regions.isEmpty() ? "eu-west" : regions.get(0);
+                }
+                heatwave.put(region, 0.85);
+            }
+            case "global_heatwave" -> regions.forEach(r -> heatwave.put(r, 0.85));
             case "close_plant", "plant_outage", "outage" -> {
                 String name = (String) params.getOrDefault("plant", plants.isEmpty() ? null
                         : plants.get(0).name);
@@ -134,23 +172,26 @@ public final class EnergyModule implements SimModule {
         public final double capacityMw;
         public final double efficiency;
         public final PlantType type;
+        public final String region;
         public Status status;
 
         public enum PlantType { SOLAR, WIND, THERMAL, BACKUP }
         public enum Status { OPERATIONAL, OUTAGE }
-        public Plant(String name, double capacityMw, double efficiency, PlantType type) {
-            this(name, capacityMw, efficiency, type, Status.OPERATIONAL);
+        public Plant(String name, double capacityMw, double efficiency, PlantType type, String region) {
+            this(name, capacityMw, efficiency, type, region, Status.OPERATIONAL);
         }
-        public Plant(String name, double capacityMw, double efficiency, PlantType type, Status status) {
+        public Plant(String name, double capacityMw, double efficiency, PlantType type,
+                     String region, Status status) {
             this.name = name;
             this.capacityMw = capacityMw;
             this.efficiency = efficiency;
             this.type = type;
+            this.region = region;
             this.status = status;
         }
         Map<String, Object> snapshot() {
             return Map.of("name", name, "capacityMw", capacityMw, "efficiency", efficiency,
-                    "type", type.name(), "status", status.name());
+                    "type", type.name(), "region", region, "status", status.name());
         }
     }
 
