@@ -14,6 +14,7 @@ import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
 import org.apache.flink.util.Collector;
 
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Properties;
 
 /**
@@ -103,10 +104,9 @@ public final class AggregatorJob {
     private static class AggregateSinkJson implements MapFunction<Aggregate, String> {
         @Override
         public String map(Aggregate a) {
-            return "{\"domain\":\"%s\",\"windowStart\":%d,\"windowEnd\":%d,\"count\":%d,"
-                    + "\"maxSeverity\":%.3f,\"avgSeverity\":%.3f}"
-                    .formatted(a.domain(), a.windowStart(), a.windowEnd(), a.count(),
-                            a.maxSeverity(), a.avgSeverity());
+            return String.format(Locale.ROOT, "{\"domain\":\"%s\",\"windowStart\":%d,\"windowEnd\":%d,\"count\":%d,\"maxSeverity\":%.3f,\"avgSeverity\":%.3f}",
+                    a.domain(), a.windowStart(), a.windowEnd(), a.count(),
+                    a.maxSeverity(), a.avgSeverity());
         }
     }
 }

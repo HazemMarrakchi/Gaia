@@ -12,7 +12,7 @@ import { GlobePanelComponent } from './core/globe/globe-panel.component';
         <h1>GAIA — World Brain</h1>
         <span class="tick" [textContent]="latestTick"></span>
       </header>
-      <gb-globe-panel></gb-globe-panel>
+      <gb-globe-panel (tick)="latestTick = $event"></gb-globe-panel>
       <router-outlet></router-outlet>
     </main>
   `,

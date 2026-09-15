@@ -17,6 +17,7 @@ coverage/
 .output/
 .nitro/
 .cache/
+.angular/
 
 # Python
 __pycache__/

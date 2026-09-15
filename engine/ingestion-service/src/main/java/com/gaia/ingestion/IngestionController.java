@@ -1,5 +1,7 @@
 package com.gaia.ingestion;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gaia.simulator.domain.WorldFactory;
 import com.gaia.simulator.domain.event.SimEvent;
 import com.gaia.simulator.engine.SimulationEngine;
@@ -11,6 +13,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
@@ -23,10 +27,13 @@ import java.util.concurrent.atomic.AtomicLong;
 public class IngestionController {
 
     public static final String TOPIC_EVENTS = "gaia.sim.events";
+    private static final int BUFFER_MAX = 200;
 
     private final KafkaTemplate<String, String> kafka;
     private final SimulationEngine engine;
     private final AtomicLong published = new AtomicLong();
+    private final Deque<String> recentJson = new ArrayDeque<>(BUFFER_MAX);
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public IngestionController(KafkaTemplate<String, String> kafka) {
         this.kafka = kafka;
@@ -52,9 +59,26 @@ public class IngestionController {
         return "tick=%d published=%d".formatted(engine.tickIndex(), published.get());
     }
 
+    @GetMapping("/events")
+    public List<JsonNode> recentEvents(@RequestParam(defaultValue = "50") int limit) throws Exception {
+        synchronized (recentJson) {
+            List<JsonNode> out = new java.util.ArrayList<>();
+            for (String json : recentJson) {
+                out.add(objectMapper.readTree(json));
+                if (out.size() >= Math.min(limit, BUFFER_MAX)) break;
+            }
+            return out;
+        }
+    }
+
     private void publish(List<SimEvent> events) {
         for (SimEvent e : events) {
-            kafka.send(TOPIC_EVENTS, e.domain().label(), serialize(e));
+            String json = serialize(e);
+            kafka.send(TOPIC_EVENTS, e.domain().label(), json);
+            synchronized (recentJson) {
+                recentJson.addFirst(json);
+                if (recentJson.size() > BUFFER_MAX) recentJson.removeLast();
+            }
             published.incrementAndGet();
         }
     }
