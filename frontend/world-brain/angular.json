@@ -17,9 +17,20 @@
             "browser": "src/main.ts",
             "polyfills": ["zone.js"],
             "tsConfig": "tsconfig.app.json",
-            "assets": [],
+            "assets": ["src/favicon.svg"],
             "styles": ["src/styles.css"],
             "scripts": []
+          }
+        },
+        "serve": {
+          "builder": "@angular-devkit/build-angular:dev-server",
+          "options": {
+            "buildTarget": "world-brain:build"
+          },
+          "configurations": {
+            "production": {
+              "buildTarget": "world-brain:build:production"
+            }
           }
         },
         "test": {
