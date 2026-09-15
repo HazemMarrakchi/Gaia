@@ -6,6 +6,16 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:56379}
+  datasource:
+    url: ${POSTGRES_JDBC:jdbc:postgresql://localhost:55432/gaia}
+    username: ${POSTGRES_USER:gaia}
+    password: ${POSTGRES_PASSWORD:gaia_dev}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      # never block startup on an unavailable PostGIS (Redis stays the source of truth)
+      initialization-fail-timeout: -1
+      connection-timeout: 3000
+      maximum-pool-size: 4
 
 management:
   endpoints:

@@ -10,6 +10,7 @@ services:
       - "55432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U gaia -d gaia"]
       interval: 10s
@@ -87,8 +88,79 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
     volumes:
       - grafana_data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
+
+  # ── Flink: continuous sliding-window aggregations ────────────────
+  flink-jobmanager:
+    build:
+      context: .
+      dockerfile: infra/flink/Dockerfile
+    image: gaia-flink:1.20
+    container_name: gaia-flink-jobmanager
+    command: jobmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        jobmanager.memory.process.size: 1024m
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9249
+    ports:
+      - "8381:8081"
+      - "9249:9249"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8081'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  flink-taskmanager:
+    build:
+      context: .
+      dockerfile: infra/flink/Dockerfile
+    image: gaia-flink:1.20
+    container_name: gaia-flink-taskmanager
+    command: taskmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 4
+        taskmanager.memory.process.size: 1728m
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9249
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+
+  # One-shot submitter: builds the job jar and submits it to the cluster.
+  flink-submit:
+    build:
+      context: .
+      dockerfile: streaming/Dockerfile
+    image: gaia-streaming:1.20
+    container_name: gaia-flink-submit
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      POSTGRES_JDBC: jdbc:postgresql://postgres:5432/gaia
+      POSTGRES_USER: gaia
+      POSTGRES_PASSWORD: gaia_dev
+      # Demo-friendly windows. Windows are keyed on the event's SIMULATED `ts`
+      # (the engine advances 50 ms of sim time per tick; ingestion ticks 1/s wall,
+      # so 3000 ms ≈ 60 s wall, 750 ms ≈ 15 s wall). Job defaults are 5 min / 1 min.
+      GAIA_WINDOW_MS: "3000"
+      GAIA_SLIDE_MS: "750"
+      FLINK_JOBMANAGER_HOST: flink-jobmanager
+    depends_on:
+      flink-jobmanager:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
 volumes:
   pg_data:

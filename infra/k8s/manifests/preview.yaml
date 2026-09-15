@@ -1,3 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gaia
+  labels:
+    app.kubernetes.io/part-of: gaia
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,7 +26,7 @@ spec:
         - name: ai-service
           image: ghcr.io/gaia-project/ai-service:latest
           ports:
-            - containerPort: 8090
+            - containerPort: 8091
           env:
             - name: KAFKA_BROKERS
               value: "kafka:9092"
@@ -34,4 +41,4 @@ spec:
     app: ai-service
   ports:
     - port: 80
-      targetPort: 8090
+      targetPort: 8091

@@ -25,19 +25,32 @@
 - `GET /health/sim` — live tick counter + event count; `GET /events?limit=` — recent events.
 - `GET /replay?fromTick=&toTick=` — **deterministic replay**: rebuilds a same-seed world and
   returns the exact events of the requested window without touching Kafka.
-- Exposes health + Prometheus metrics (Micrometer).
+- Exposes health + Prometheus metrics (Micrometer): `gaia_sim_ticks_total`,
+  `gaia_sim_events_published_total`, `gaia_sim_events_by_domain_total{domain}`,
+  `gaia_sim_tick_index`, `gaia_sim_max_severity{domain}`.
 
 ### engine/scenario-service (Spring Boot)
 - `POST /scenarios` — builds a same-seed world, runs a baseline, **deep-copies the state**,
   applies the requested perturbation(s), runs the scenario, returns per-domain deltas
-  (what-if impact). Result cached in Redis (`gaia:scenario:{id}`). Port 8282.
-- CORS-open for the World Brain (4302) and the portal.
+  (what-if impact). Result cached in Redis (`gaia:scenario:{id}`) and mirrored into
+  PostGIS (`gaia_scenarios`, best effort). Port 8282.
+- CORS-open for the World Brain (4302) and the portal; exposes `/actuator/prometheus`
+  (`gaia_sim_scenarios_total`).
 
 ### streaming (Flink)
 - Consumes `gaia.sim.events`; sliding windows (env `GAIA_WINDOW_MS`/`GAIA_SLIDE_MS`,
   defaults 5 min / 1 min) compute per-domain aggregates (count, max & avg severity).
-- Pushes aggregates back to Kafka (`gaia.sim.aggregates`) for Grafana.
-- Runs in Docker (`flink:1.20-java17`), UI at `http://localhost:8381`.
+- **Event time = simulated time**: windows are keyed on the event payload `ts`
+  (the engine clock advances `stepMillis` — 50 ms — of simulated time per tick, while
+  the ingestion loop ticks 1/s wall clock; so 3 000 ms of sim time ≈ 60 s wall clock).
+  Malformed records are dropped (never fail the job), and payloads without `ts`
+  fall back to `tick` seconds.
+- Pushes the per-domain windows back to Kafka (`gaia.sim.aggregates`) for exports, and
+  persists **both** per-domain and per-region windows into PostGIS
+  (`gaia_domain_aggregates`, `gaia_region_aggregates`) through an at-least-once JDBC sink.
+- Runs in Docker (`infra/flink/Dockerfile` + `streaming/Dockerfile`), UI at
+  `http://localhost:8381`; the job is submitted automatically by `flink-submit`
+  (`streaming/submit.sh`, idempotent). Prometheus metrics reporter enabled (port 9249).
 
 ### ai-service (Python FastAPI)
 - `POST /forecast` — lightweight trend + seasonality forecast (linear model over features:
@@ -58,7 +71,10 @@
 
 ## Data
 
-- **PostgreSQL/PostGIS**: geo entities, aggregates, scenario diffs (via docker-compose).
+- **PostgreSQL/PostGIS**: geo entities and aggregates — `gaia_regions` (region polygons +
+  centroid/area views), `gaia_domain_aggregates` and `gaia_region_aggregates` (Flink windows),
+  `gaia_scenarios` (what-if diffs), plus the `gaia_region_severity` spatial view. The schema is
+  applied automatically from `infra/postgres/init/01-gaia.sql` on first `docker compose up`.
 - **Kafka (KRaft)**: event bus — `gaia.sim.*` topics (dual listeners: container `kafka:9092`,
   host `localhost:9093`).
 - **Redis**: live scenario cache, alerts, rate limits.
@@ -66,15 +82,21 @@
 
 ## Deployment
 
-- `docker-compose.yml` — Kafka, PostGIS, Mongo, Redis, Prometheus, Grafana, Flink.
-- `infra/k8s/helm` + `infra/k8s/manifests` — Kubernetes packaging (demonstrates deployment
-  readiness; not used for the local demo).
+- `docker-compose.yml` — Kafka, PostGIS, Mongo, Redis, Prometheus, Grafana and the Flink
+  cluster (JobManager, TaskManager, one-shot `flink-submit`).
+- `infra/flink/Dockerfile` (Flink + Prometheus reporter) and `streaming/Dockerfile`
+  (multi-stage build of the aggregator jar) feed those services.
+- `infra/grafana` — provisioning (Prometheus datasource) + the GAIA-Live dashboard.
+- `infra/k8s/helm` + `infra/k8s/manifests` — Kubernetes packaging for ingestion, scenario and
+  ai-service (demonstrates deployment readiness; not used for the local demo).
 - `infra/terraform` — Azure AKS provisioning (demonstrates IaC).
-- `.gitlab-ci.yml` — CI pipeline: build → test → image → deploy.
+- `.gitlab-ci.yml` — CI pipeline: build → test (engine, AI, world-brain specs, infra
+  validation) → image → deploy.
 
 ## Observability
 
-- Prometheus exports from JVM services (Micrometer) + ai-service (prometheus-client).
-- Grafana dashboards: GAIA-Live (tick throughput, event volume, severity by domain),
-  Flink job status.
+- Prometheus exports from JVM services (Micrometer) + ai-service (prometheus-client) + Flink
+  (Prometheus metrics reporter, `flink-jobmanager:*`/`flink-taskmanager:*` on port 9249).
+- Grafana dashboards: GAIA-Live (`infra/grafana/dashboards/gaia-live.json`, uid `gaia-live`) —
+  tick throughput, event volume & severity by domain, Flink job/taskmanager status.
 - Deterministic seed per run for reproducible replays; scenario runs are traceable by id.

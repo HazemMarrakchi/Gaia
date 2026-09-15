@@ -7,7 +7,7 @@ ingestion:
     repository: ghcr.io/gaia-project/ingestion
     tag: latest
   service:
-    port: 8081
+    port: 8181
 
 scenario:
   replicaCount: 1
@@ -15,7 +15,7 @@ scenario:
     repository: ghcr.io/gaia-project/scenario
     tag: latest
   service:
-    port: 8082
+    port: 8282
 
 aiService:
   replicaCount: 1
@@ -23,11 +23,14 @@ aiService:
     repository: ghcr.io/gaia-project/ai-service
     tag: latest
   service:
-    port: 8090
+    port: 8091
 
 redis:
   host: "gaia-redis"
   port: 6379
+
+postgres:
+  jdbcUrl: "jdbc:postgresql://gaia-postgres:5432/gaia"
 
 kafka:
   bootstrapServers: "kafka:9092"

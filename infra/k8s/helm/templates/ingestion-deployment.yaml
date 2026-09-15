@@ -21,7 +21,7 @@ spec:
             - name: KAFKA_BROKERS
               value: {{ .Values.kafka.bootstrapServers }}
             - name: SPRING_DATASOURCE_URL
-              value: jdbc:postgresql://postgres:5432/gaia
+              value: {{ .Values.postgres.jdbcUrl | quote }}
           livenessProbe:
             httpGet:
               path: /health/sim

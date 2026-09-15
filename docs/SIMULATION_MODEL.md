@@ -70,6 +70,19 @@ no hard-coded finance shock.
 Topic layout: `gaia.sim.events` (all events), `gaia.sim.aggregates` (per-domain
 sliding-window stats from Flink).
 
+## Persistence (PostGIS)
+
+The Flink job writes the same windows to PostGIS so they can be queried with SQL/geo
+predicates (schema in `infra/postgres/init/01-gaia.sql`):
+
+- `gaia_domain_aggregates (domain, window_start, window_end, event_count, max_severity, avg_severity)`
+- `gaia_region_aggregates (region, window_start, window_end, event_count, max_severity, avg_severity)`
+- `gaia_regions (region, label, bbox geometry(Polygon,4326))` — the 8 generated regions;
+  `gaia_region_geometry` / `gaia_region_severity` expose centroid, area (km²) and the join
+  between regions and their severity windows.
+- `gaia_scenarios (id, seed, entities, ticks, perturbations text[], diffs jsonb)` — one row
+  per what-if run from the scenario-service.
+
 ## Scenario (what-if)
 
 `POST /scenarios {"baselineTicks": 240, "ticks": 120, "perturbations": ["heatwave"], "seed": 42, "entities": 1000000}`

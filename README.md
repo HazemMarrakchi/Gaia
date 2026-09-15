@@ -62,7 +62,9 @@ Flink (docker).
 Prerequisites: Docker, JDK 21, Maven, Node 20+, Python 3.11+.
 
 ```bash
-# 1. infra (Kafka, PostGIS, Mongo, Redis, Prometheus, Grafana, Flink)
+# 1. infra + streaming (Kafka, PostGIS, Mongo, Redis, Prometheus, Grafana,
+#    and the Flink cluster — the aggregator job image is built on first run
+#    and submitted automatically to http://localhost:8381)
 docker compose up -d
 
 # 2. AI service (port 8091)
@@ -79,8 +81,14 @@ java -jar ingestion-service/target/ingestion-service-0.1.0-SNAPSHOT.jar --server
 java -jar scenario-service/target/scenario-service-0.1.0-SNAPSHOT.jar --server.port=8282
 
 # 4. production frontends (from the built bundles)
-cd frontend/world-brain && npm i && npm run build && npm start      # 3D control room
-cd frontend/portal        && npm i && npm run dev                   # public portal
+cd frontend/world-brain && npm i && npm run build && npm start      # 3D control room (4302)
+cd frontend/portal        && npm i && npm run dev                   # public portal (3000)
+```
+
+Verify everything at once once the stack is up:
+
+```bash
+sh scripts/smoke.sh          # checks every endpoint listed below
 ```
 
 Entity scale is set per service with the `SIM_MAX_ENTITIES` env var (default `1000000`);
@@ -121,8 +129,10 @@ so shocks propagated across the system are real and visible in scenarios — not
 | What-if scenario              | `POST http://localhost:8282/scenarios`       | per-domain deltas          |
 | AI suggestions                | `POST http://localhost:8091/scenario/suggest` | rule + anomaly based      |
 | Flink UI / Job status         | `http://localhost:8381`                      | job RUNNING               |
-| Prometheus                    | `http://localhost:9090`                      | ingestion + AI metrics     |
+| Aggregates in PostGIS         | `gaia_domain_aggregates`, `gaia_region_aggregates` | written by the Flink job |
+| Prometheus                    | `http://localhost:9090`                      | ingestion + AI + Flink metrics |
 | Grafana (GAIA-Live dashboard) | `http://localhost:3001/d/gaia-live/gaia-live-platform` | datasource wired |
+| World Brain tests             | `cd frontend/world-brain && npm run test`    | 6 specs, Chrome headless  |
 
 ## Documentation
 

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-service
+  namespace: {{ .Values.global.namespace }}
+  labels: {{- include "gaia.ai.selectorLabels" . | nindent 4 }}
+spec:
+  selector: {{- include "gaia.ai.selectorLabels" . | nindent 4 }}
+  ports:
+    - port: 80
+      targetPort: {{ .Values.aiService.service.port }}

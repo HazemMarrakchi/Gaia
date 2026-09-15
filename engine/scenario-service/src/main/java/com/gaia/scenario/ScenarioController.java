@@ -1,9 +1,14 @@
 package com.gaia.scenario;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gaia.simulator.domain.WorldFactory;
 import com.gaia.simulator.engine.SimulationEngine;
 import com.gaia.simulator.engine.SimulationState;
+import io.micrometer.core.instrument.MeterRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -13,6 +18,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * What-if engine: clones the world state, applies perturbations, runs N ticks
@@ -24,11 +30,23 @@ public class ScenarioController {
 
     private static final long STEP_MS = 50L;
     private static final Instant START = Instant.parse("2026-09-15T00:00:00Z");
+    private static final Logger log = LoggerFactory.getLogger(ScenarioController.class);
+
+    private static final String INSERT_SCENARIO =
+            "INSERT INTO gaia_scenarios "
+                    + "(id, seed, entities, baseline_ticks, scenario_ticks, scenario_events, "
+                    + "perturbations, diffs) "
+                    + "VALUES (?::uuid, ?, ?, ?, ?, ?, ?::text[], ?::jsonb)";
 
     private final StringRedisTemplate redis;
+    private final JdbcTemplate jdbc;
+    private final MeterRegistry meters;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public ScenarioController(StringRedisTemplate redis) {
+    public ScenarioController(StringRedisTemplate redis, JdbcTemplate jdbc, MeterRegistry meters) {
         this.redis = redis;
+        this.jdbc = jdbc;
+        this.meters = meters;
     }
 
     @PostMapping
@@ -49,16 +67,42 @@ public class ScenarioController {
                 applyPerturbation(scenario, domain, p)));
         long scenarioEvents = scenario.run(req.ticks()).size();
 
+        Map<String, Map<String, Object>> diffs = diffStats(baseState.snapshot(), scenarioState.snapshot());
+
         Map<String, Object> result = new java.util.HashMap<>();
         result.put("id", id);
         result.put("baselineTick", base.tickIndex());
         result.put("scenarioTicks", scenario.tickIndex());
         result.put("scenarioEvents", scenarioEvents);
-        result.put("diffs", diffStats(baseState.snapshot(), scenarioState.snapshot()));
+        result.put("diffs", diffs);
         result.put("perturbations", req.perturbations());
 
         redis.opsForValue().set("gaia:scenario:" + id, result.toString());
+        meters.counter("gaia_sim_scenarios").increment();
+        persist(id, seed, req, scenarioEvents, diffs);
         return result;
+    }
+
+    /**
+     * Mirrors the run into PostGIS ({@code gaia_scenarios}) so diffs stay queryable.
+     * Best effort: Redis remains the source of truth for the live demo.
+     */
+    private void persist(String id, long seed, ScenarioRequest req, long scenarioEvents,
+                         Map<String, Map<String, Object>> diffs) {
+        try {
+            jdbc.update(INSERT_SCENARIO, id, seed, req.entities(), req.baselineTicks(),
+                    req.ticks(), scenarioEvents, toPgTextArray(req.perturbations()),
+                    objectMapper.writeValueAsString(diffs));
+        } catch (Exception ex) {
+            log.warn("scenario {} kept in Redis only (PostGIS unavailable: {})", id, ex.getMessage());
+        }
+    }
+
+    /** {@code ["a","b"]} → {@code {"a","b"}} (PostgreSQL text[] literal). */
+    private static String toPgTextArray(List<String> values) {
+        return values.stream()
+                .map(v -> "\"" + v.replace("\"", "\\\"") + "\"")
+                .collect(Collectors.joining(",", "{", "}"));
     }
 
     private void applyPerturbation(SimulationEngine scenario, String domain, String perturbation) {

@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scenario
+  namespace: {{ .Values.global.namespace }}
+  labels: {{- include "gaia.scenario.selectorLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.scenario.replicaCount }}
+  selector:
+    matchLabels: {{- include "gaia.scenario.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "gaia.scenario.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: scenario
+          image: "{{ .Values.scenario.image.repository }}:{{ .Values.scenario.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.scenario.service.port }}
+          env:
+            - name: SCENARIO_PORT
+              value: {{ .Values.scenario.service.port | quote }}
+            - name: REDIS_HOST
+              value: {{ .Values.redis.host | quote }}
+            - name: REDIS_PORT
+              value: {{ .Values.redis.port | quote }}
+            - name: POSTGRES_JDBC
+              value: {{ .Values.postgres.jdbcUrl | quote }}
+            - name: KAFKA_BROKERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: {{ .Values.scenario.service.port }}
+            initialDelaySeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: {{ .Values.scenario.service.port }}
+            initialDelaySeconds: 10

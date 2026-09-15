@@ -11,5 +11,5 @@ RUN mvn -q -pl ingestion-service -am package -DskipTests
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /app/ingestion-service/target/ingestion-service-*.jar app.jar
-EXPOSE 8081
+EXPOSE 8181
 ENTRYPOINT ["java", "-jar", "app.jar"]

@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-service
+  namespace: {{ .Values.global.namespace }}
+  labels: {{- include "gaia.ai.selectorLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.aiService.replicaCount }}
+  selector:
+    matchLabels: {{- include "gaia.ai.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "gaia.ai.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: ai-service
+          image: "{{ .Values.aiService.image.repository }}:{{ .Values.aiService.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.aiService.service.port }}
+          env:
+            - name: KAFKA_BROKERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.aiService.service.port }}
+            initialDelaySeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.aiService.service.port }}
+            initialDelaySeconds: 5

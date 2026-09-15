@@ -11,5 +11,5 @@ RUN mvn -q -pl scenario-service -am package -DskipTests
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY --from=build /app/scenario-service/target/scenario-service-*.jar app.jar
-EXPOSE 8082
+EXPOSE 8282
 ENTRYPOINT ["java", "-jar", "app.jar"]

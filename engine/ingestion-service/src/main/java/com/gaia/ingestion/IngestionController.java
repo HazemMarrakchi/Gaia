@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gaia.simulator.domain.WorldFactory;
 import com.gaia.simulator.domain.event.SimEvent;
 import com.gaia.simulator.engine.SimulationEngine;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,7 +19,10 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Drives the deterministic simulation clock and publishes events to Kafka.
@@ -28,17 +33,35 @@ public class IngestionController {
 
     public static final String TOPIC_EVENTS = "gaia.sim.events";
     private static final int BUFFER_MAX = 200;
+    /** Domains that emit events — used to pre-register per-domain severity gauges. */
+    private static final List<String> DOMAINS = List.of("energy", "cities", "transport", "finance");
 
     private final KafkaTemplate<String, String> kafka;
     private final SimulationEngine engine;
+    private final MeterRegistry meters;
     private final AtomicLong published = new AtomicLong();
     private final Deque<String> recentJson = new ArrayDeque<>(BUFFER_MAX);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final Map<String, AtomicReference<Double>> maxSeverityByDomain = new ConcurrentHashMap<>();
 
-    public IngestionController(KafkaTemplate<String, String> kafka) {
+    public IngestionController(KafkaTemplate<String, String> kafka, MeterRegistry meters) {
         this.kafka = kafka;
+        this.meters = meters;
         this.entityBudget = Long.parseLong(System.getenv().getOrDefault("SIM_MAX_ENTITIES", "1000000"));
         this.engine = newEngine();
+        registerMetrics();
+    }
+
+    /** Tick index + per-domain severity, exported via /actuator/prometheus for Grafana. */
+    private void registerMetrics() {
+        Gauge.builder("gaia_sim_tick_index", engine, SimulationEngine::tickIndex).register(meters);
+        for (String domain : DOMAINS) {
+            AtomicReference<Double> max = new AtomicReference<>(0.0);
+            maxSeverityByDomain.put(domain, max);
+            Gauge.builder("gaia_sim_max_severity", max, AtomicReference::get)
+                    .tag("domain", domain)
+                    .register(meters);
+        }
     }
 
     private static final long SEED = 42L;
@@ -53,6 +76,7 @@ public class IngestionController {
 
     @Scheduled(fixedDelayString = "${gaia.tick.period-ms:1000}")
     public void tickLoop() {
+        meters.counter("gaia_sim_ticks").increment();
         publish(engine.step());
     }
 
@@ -112,6 +136,12 @@ public class IngestionController {
                 if (recentJson.size() > BUFFER_MAX) recentJson.removeLast();
             }
             published.incrementAndGet();
+
+            String domain = e.domain().label();
+            meters.counter("gaia_sim_events_published").increment();
+            meters.counter("gaia_sim_events_by_domain", "domain", domain).increment();
+            maxSeverityByDomain.computeIfAbsent(domain, key -> new AtomicReference<>(0.0))
+                    .updateAndGet(previous -> Math.max(previous, e.severity()));
         }
     }
 

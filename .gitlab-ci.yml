@@ -37,9 +37,32 @@ test-ai:
 
 test-world-brain:
   stage: test
-  image: node:20-slim
+  image: node:20-bullseye
   script:
-    - cd frontend/world-brain && npm ci && npm run test
+    - apt-get update -qq && apt-get install -y -qq chromium > /dev/null
+    - export CHROME_BIN=/usr/bin/chromium
+    - cd frontend/world-brain
+    - npm ci
+    - npm run test -- --browsers=ChromeHeadlessCI
+
+# ─ Infra validation (compose, Prometheus, Grafana provisioning) ──
+validate-infra:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - pip install -q pyyaml
+    - |
+      python - <<'PY'
+      import glob, json, yaml
+      paths = ["docker-compose.yml", ".gitlab-ci.yml", "infra/prometheus/prometheus.yml"]
+      paths += glob.glob("infra/grafana/**/*.yml", recursive=True)
+      for path in paths:
+          yaml.safe_load(open(path, encoding="utf-8"))
+          print("ok", path)
+      for path in glob.glob("infra/grafana/dashboards/*.json"):
+          json.load(open(path, encoding="utf-8"))
+          print("ok", path)
+      PY
 
 # ── Images ────────────────────────────────────────────────────────
 image-ingestion:

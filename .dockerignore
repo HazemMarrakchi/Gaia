@@ -1,0 +1,15 @@
+# Keep Docker build contexts small (used by streaming/Dockerfile and the engine images)
+**/node_modules
+**/.venv
+**/target
+**/dist
+**/.nuxt
+**/.output
+**/.angular
+**/__pycache__
+**/*.pyc
+.git
+.gitignore
+.env
+*.log
+.vscode

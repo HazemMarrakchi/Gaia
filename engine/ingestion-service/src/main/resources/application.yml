@@ -1,5 +1,5 @@
 server:
-  port: ${INGESTION_PORT:8081}
+  port: ${INGESTION_PORT:8181}
 
 spring:
   kafka:

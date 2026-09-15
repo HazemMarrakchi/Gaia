@@ -1,0 +1,5 @@
+# Shell scripts and Dockerfiles are copied/executed inside Linux containers:
+# CRLF line endings would break the shebang (e.g. streaming/submit.sh, scripts/smoke.sh).
+*.sh text eol=lf
+Dockerfile text eol=lf
+**/Dockerfile text eol=lf
