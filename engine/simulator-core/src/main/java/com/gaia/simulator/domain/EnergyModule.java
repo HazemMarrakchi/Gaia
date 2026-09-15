@@ -1,6 +1,7 @@
-package com.gaia.simulator.engine;
+package com.gaia.simulator.domain;
 
-import com.gaia.simulator.domain.Domain;
+import com.gaia.simulator.engine.SimModule;
+import com.gaia.simulator.engine.TickContext;
 import com.gaia.simulator.domain.event.SimEvent;
 
 import java.util.ArrayDeque;
@@ -71,7 +72,7 @@ public final class EnergyModule implements SimModule {
 
     private void updateLoadPrice(GridNode node, double demand, double price) {
         node.lastLoadMw = demand * (node.baseLoadMw / grid.stream()
-                .mapToDouble(GridNode::baseLoadMw).sum());
+                .mapToDouble(g -> g.baseLoadMw).sum());
         node.lastPrice = price;
     }
 
@@ -114,12 +115,24 @@ public final class EnergyModule implements SimModule {
 
     // --- entities -------------------------------------------------------
 
-    public record Plant(String name, double capacityMw, double efficiency,
-                        PlantType type, Plant.Status status) {
+    public static final class Plant {
+        public final String name;
+        public final double capacityMw;
+        public final double efficiency;
+        public final PlantType type;
+        public Status status;
+
         public enum PlantType { SOLAR, WIND, THERMAL, BACKUP }
         public enum Status { OPERATIONAL, OUTAGE }
         public Plant(String name, double capacityMw, double efficiency, PlantType type) {
             this(name, capacityMw, efficiency, type, Status.OPERATIONAL);
+        }
+        public Plant(String name, double capacityMw, double efficiency, PlantType type, Status status) {
+            this.name = name;
+            this.capacityMw = capacityMw;
+            this.efficiency = efficiency;
+            this.type = type;
+            this.status = status;
         }
         Map<String, Object> snapshot() {
             return Map.of("name", name, "capacityMw", capacityMw, "efficiency", efficiency,

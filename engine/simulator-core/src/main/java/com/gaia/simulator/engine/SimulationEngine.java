@@ -4,6 +4,7 @@ import com.gaia.simulator.domain.event.SimEvent;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.SplittableRandom;
 
 /**
  * Orchestrates the discrete-event loop:
