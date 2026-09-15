@@ -54,13 +54,13 @@ public final class CitiesModule implements SimModule {
         }
 
         if (strain > districts.size() * 0.6) {
-            emit(ctx, "CITY_STRAIN", "global", Math.min(1.0, strain / districts.size()), "");
+            emit(ctx, "CITY_STRAIN", "global", Math.min(1.0, strain / districts.size()), "{}");
         }
         if (waterShortage > 0) {
-            emit(ctx, "WATER_SHORTAGE", "global", Math.min(1.0, waterShortage / 1_000_000), "");
+            emit(ctx, "WATER_SHORTAGE", "global", Math.min(1.0, waterShortage / 1_000_000), "{}");
         }
         if (hospitalLoad > districts.size() * 100) {
-            emit(ctx, "HOSPITAL_LOAD", "global", Math.min(1.0, hospitalLoad / (districts.size() * 200)), "");
+            emit(ctx, "HOSPITAL_LOAD", "global", Math.min(1.0, hospitalLoad / (districts.size() * 200)), "{}");
         }
     }
 

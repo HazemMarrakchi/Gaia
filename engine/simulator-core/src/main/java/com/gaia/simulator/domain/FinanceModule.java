@@ -49,13 +49,13 @@ public final class FinanceModule implements SimModule {
         }
 
         if (liquidityStress > 0.3) {
-            emit(ctx, "LIQUIDITY_STRESS", "global", Math.min(1.0, liquidityStress), "");
+            emit(ctx, "LIQUIDITY_STRESS", "global", Math.min(1.0, liquidityStress), "{}");
         }
         if (maxVar > 6.0) {
-            emit(ctx, "VAR_BREACH", "global", Math.min(1.0, maxVar / 10.0), "");
+            emit(ctx, "VAR_BREACH", "global", Math.min(1.0, maxVar / 10.0), "{}");
         }
         if (Math.abs(shock) > 0.1) {
-            emit(ctx, "PRICE_SHOCK", "global", Math.min(1.0, shock), "");
+            emit(ctx, "PRICE_SHOCK", "global", Math.min(1.0, shock), "{}");
         }
     }
 

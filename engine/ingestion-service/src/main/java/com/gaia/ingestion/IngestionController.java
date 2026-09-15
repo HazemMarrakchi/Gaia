@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -59,9 +60,9 @@ public class IngestionController {
     }
 
     private String serialize(SimEvent e) {
-        return "{\"id\":\"%s\",\"tick\":%d,\"ts\":\"%s\",\"domain\":\"%s\",\"type\":\"%s\","
-                + "\"region\":\"%s\",\"severity\":%.3f,\"payload\":\"%s\"}"
-                .formatted(e.id(), e.tick(), e.ts(), e.domain().label(), e.type(),
-                        e.region(), e.severity(), e.payloadJson());
+        return String.format(Locale.ROOT,
+                "{\"id\":\"%s\",\"tick\":%d,\"ts\":\"%s\",\"domain\":\"%s\",\"type\":\"%s\",\"region\":\"%s\",\"severity\":%.3f,\"payload\":%s}",
+                e.id(), e.tick(), e.ts(), e.domain().label(), e.type(),
+                e.region(), e.severity(), e.payloadJson());
     }
 }

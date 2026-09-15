@@ -57,7 +57,7 @@ public final class EnergyModule implements SimModule {
             if (ctx.rng().nextDouble() < 0.0005) {
                 p.status = Plant.Status.OUTAGE;
                 emit(ctx, "PLANT_OUTAGE", "global", 0.9,
-                        "plant=%s".formatted(p.name));
+                        "{\"plant\":\"%s\"}".formatted(p.name));
             }
         }
         double shortage = Math.max(0.0, demand - generated);
@@ -66,7 +66,7 @@ public final class EnergyModule implements SimModule {
         double price = basePrice() * (1.0 + shortage * 0.5 + heatwaveIntensity * 0.3);
 
         if (shortage > 0.05 * demand) {
-            emit(ctx, "GRID_STRESS", "global", Math.min(1.0, shortage / demand), "");
+            emit(ctx, "GRID_STRESS", "global", Math.min(1.0, shortage / demand), "{}");
         }
         grid.forEach(n -> updateLoadPrice(n, demand, price));
     }

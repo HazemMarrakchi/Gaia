@@ -49,13 +49,13 @@ public final class TransportModule implements SimModule {
         }
 
         if (totalDelays > vehicles.size() * 2) {
-            emit(ctx, "SHIPMENT_DELAY", "global", Math.min(1.0, totalDelays / (vehicles.size() * 5)), "");
+            emit(ctx, "SHIPMENT_DELAY", "global", Math.min(1.0, totalDelays / (vehicles.size() * 5)), "{}");
         }
         if (totalEmissions > vehicles.size() * 0.5) {
-            emit(ctx, "EMISSIONS_SPIKE", "global", Math.min(1.0, totalEmissions / vehicles.size()), "");
+            emit(ctx, "EMISSIONS_SPIKE", "global", Math.min(1.0, totalEmissions / vehicles.size()), "{}");
         }
         double[] last = {flow / Math.max(1, vehicles.size())};
-        emit(ctx, "FLOW_CHANGED", "global", Math.max(0.0, Math.min(1.0, 1.0 - last[0])), "");
+        emit(ctx, "FLOW_CHANGED", "global", Math.max(0.0, Math.min(1.0, 1.0 - last[0])), "{}");
     }
 
     private void emit(TickContext ctx, String type, String region, double severity, String payload) {

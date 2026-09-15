@@ -27,7 +27,7 @@ public final class AggregatorJob {
         env.getConfig().setAutoWatermarkInterval(500L);
 
         Properties props = new Properties();
-        props.setProperty("bootstrap.servers", System.getenv().getOrDefault("KAFKA_BROKERS", "localhost:9092"));
+        props.setProperty("bootstrap.servers", System.getenv().getOrDefault("KAFKA_BROKERS", "localhost:9093"));
         props.setProperty("group.id", "gaia-aggregator");
 
         DataStream<String> raw = env.addSource(new FlinkKafkaConsumer<>(
