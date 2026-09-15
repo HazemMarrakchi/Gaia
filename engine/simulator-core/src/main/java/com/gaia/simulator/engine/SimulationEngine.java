@@ -14,32 +14,38 @@ import java.util.SplittableRandom;
  *          → collect events → drain to ingestion
  * </pre>
  *
- * Deterministic: constructed with a {@code seed}; each tick derives a fresh
- * {@link SplittableRandom} so replays and what-if clones reproduce exactly.
+ * Deterministic: constructed with a {@code seed}; each tick derives its RNG by
+ * {@link SplittableRandom#split()} from a master so replays and what-if clones
+ * reproduce exactly, while successive ticks never reuse the same sequence.
  */
 public final class SimulationEngine {
 
     private final SimulationState state;
     private final long stepMillis;
-    private final long seed;
+    private final SplittableRandom master;
+    private long tick;
+    private Instant current;
     private TickContext ctx;
 
     public SimulationEngine(SimulationState state, long seed, long stepMillis, Instant start) {
         this.state = state;
-        this.seed = seed;
         this.stepMillis = stepMillis;
-        this.ctx = new TickContext(0, start, new SplittableRandom(seed));
+        this.master = new SplittableRandom(seed);
+        this.tick = 0;
+        this.current = start;
     }
 
     /** Runs exactly one tick and returns the events produced by all modules. */
     public List<SimEvent> step() {
+        ctx = new TickContext(tick, current, master.split());
         for (String name : List.of("energy", "cities", "transport", "finance")) {
             SimModule m = state.module(name);
             m.tick(ctx);
             state.collect(m.drainEvents());
         }
         List<SimEvent> events = state.drainAllEvents();
-        ctx = TickContext.next(ctx, stepMillis, seed);
+        tick++;
+        current = current.plusMillis(stepMillis);
         return events;
     }
 
@@ -53,7 +59,7 @@ public final class SimulationEngine {
     }
 
     public long tickIndex() {
-        return ctx.tick();
+        return tick;
     }
 
     public SimulationState state() {

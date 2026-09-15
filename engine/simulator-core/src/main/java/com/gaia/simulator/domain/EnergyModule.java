@@ -42,9 +42,10 @@ public final class EnergyModule implements SimModule {
         }
         heatwaveIntensity += (target - heatwaveIntensity) * 0.2;
 
-        // 2. Compute demand from weather + external region strain.
+        // 2. Compute demand from weather + external region strain + noise.
         double demand = grid.stream().mapToDouble(g -> g.baseLoadMw).sum()
-                * (1.0 + 0.5 * heatwaveIntensity);
+                * (1.0 + 0.5 * heatwaveIntensity)
+                * (1.0 + 0.02 * ctx.rng().nextGaussian());
 
         // 3. Dispatch plants (batteries first within whatever capacity exists).
         double generated = 0;
