@@ -29,4 +29,12 @@ public interface SimModule {
 
     /** Drains events emitted during the last tick and clears the buffer. */
     List<SimEvent> drainEvents();
+
+    /**
+     * Deep copy of this module for what-if cloning. Must reproduce every
+     * mutable field so the clone can be perturbed without altering the seed state.
+     */
+    default SimModule copy() {
+        throw new UnsupportedOperationException("copy not implemented for " + domain());
+    }
 }

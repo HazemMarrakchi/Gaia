@@ -38,4 +38,11 @@ public final class SimulationState {
         modules.forEach((k, m) -> snap.put(k, m.state()));
         return snap;
     }
+
+    /** Deep copy used by the what-if machinery (perturb a clone, not the live world). */
+    public SimulationState deepCopy() {
+        var copy = new java.util.LinkedHashMap<String, SimModule>();
+        modules.forEach((k, m) -> copy.put(k, m.copy()));
+        return new SimulationState(copy);
+    }
 }

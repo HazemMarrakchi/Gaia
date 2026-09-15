@@ -25,6 +25,22 @@ public final class CitiesModule implements SimModule {
     }
 
     @Override
+    public CitiesModule copy() {
+        List<District> copyDistricts = districts.stream()
+                .map(d -> {
+                    District copy = new District(d.id, d.population, d.basePowerDraw,
+                            d.gridCapacity, d.inflowPerTick, d.beds);
+                    copy.waterLevel = d.waterLevel;
+                    copy.hospitalOccupancy = d.hospitalOccupancy;
+                    return copy;
+                })
+                .toList();
+        CitiesModule m = new CitiesModule(copyDistricts);
+        m.heatwave = heatwave;
+        return m;
+    }
+
+    @Override
     public Domain domain() {
         return Domain.CITIES;
     }
@@ -70,14 +86,15 @@ public final class CitiesModule implements SimModule {
 
     @Override
     public Map<String, Object> state() {
-        return Map.of("districts", districts.stream().map(District::snapshot).toList());
+        return Map.of("heatwave", heatwave,
+                "districts", districts.stream().map(District::snapshot).toList());
     }
 
     @Override
     public void applyPerturbation(String type, Map<String, Object> params) {
-        switch (type) {
-            case "HEATWAVE", "HEATWAVE_EU_JULY" -> heatwave = 0.8;
-            case "WATER_SHORTAGE" -> districts.forEach(d -> d.waterLevel *= 0.4);
+        switch (type.toLowerCase()) {
+            case "heatwave", "heatwave_eu_july", "strain" -> heatwave = 0.8;
+            case "water_shortage", "outage" -> districts.forEach(d -> d.waterLevel *= 0.4);
             default -> { /* no-op */ }
         }
     }

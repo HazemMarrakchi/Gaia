@@ -4,8 +4,8 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
   runtimeConfig: {
     public: {
-      aiServiceUrl: process.env.AI_URL || 'http://localhost:8090',
-      worldBrainUrl: process.env.WORLD_BRAIN_URL || 'http://localhost:4200',
+      aiServiceUrl: process.env.AI_URL || 'http://localhost:8091',
+      worldBrainUrl: process.env.WORLD_BRAIN_URL || 'http://localhost:4302',
     },
   },
 });

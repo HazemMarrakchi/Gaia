@@ -21,7 +21,7 @@ import java.util.Properties;
 
 /**
  * Consumes {@code gaia.sim.events}, computes sliding-window aggregates per
- * domain and pushes cross-domain severity snapshots to {@code gaia.sim.aggregates}.
+ * domain and pushes them to {@code gaia.sim.aggregates}.
  *
  * <p>Window sizes come from env ({@code GAIA_WINDOW_MS} / {@code GAIA_SLIDE_MS},
  * defaults 5 min / 1 min) so demos can shrink them without editing production.

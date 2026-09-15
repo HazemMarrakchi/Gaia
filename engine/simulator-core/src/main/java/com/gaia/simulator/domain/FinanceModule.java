@@ -21,9 +21,23 @@ public final class FinanceModule implements SimModule {
     private final List<Bank> banks;
     private double volatility = 0.2;
     private double indexLevel = 100.0;
+    private double lastExternalShock = 0.02;
+    private TickContext ctx = null;
 
     public FinanceModule(List<Bank> banks) {
         this.banks = banks;
+    }
+
+    @Override
+    public FinanceModule copy() {
+        List<Bank> copyBanks = banks.stream()
+                .map(b -> new Bank(b.name, b.capital, b.exposure, b.minCapital))
+                .toList();
+        FinanceModule m = new FinanceModule(copyBanks);
+        m.volatility = volatility;
+        m.indexLevel = indexLevel;
+        m.lastExternalShock = lastExternalShock;
+        return m;
     }
 
     @Override
@@ -33,6 +47,7 @@ public final class FinanceModule implements SimModule {
 
     @Override
     public void tick(TickContext ctx) {
+        this.ctx = ctx;
         double shock = externalShock();
         volatility = clamp(volatility * (1.0 + shock * 0.3) + 0.01 * ctx.rng().nextGaussian());
         indexLevel *= 1.0 - shock * 0.02 + 0.001 * ctx.rng().nextGaussian();
@@ -60,12 +75,21 @@ public final class FinanceModule implements SimModule {
     }
 
     private double externalShock() {
-        // In the production wiring this reads cross-domain severity from ticks;
-        // scaffold reads a 5-period EMA of recent shocks pushed by the engine.
-        return lastExternalShock;
+        // Real cross-domain coupling: EMA of max severity across all domains
+        // (energy heatwave, transport disruption, cities strain) propagated
+        // through TickContext by the engine. Bounded to avoid runaway.
+        return Math.max(lastExternalShock, Math.min(0.5, ctx != null ? ctx.externalShock() : 0.0));
     }
 
-    private double lastExternalShock = 0.02;
+    @Override
+    public void applyPerturbation(String type, Map<String, Object> params) {
+        switch (type.toLowerCase()) {
+            case "price_shock", "shock", "crash" -> lastExternalShock = 0.25;
+            case "inject_liquidity" -> banks.forEach(b -> b.capital *= 1.2);
+            case "liquidity" -> banks.forEach(b -> b.capital *= 0.7);
+            default -> { /* no-op */ }
+        }
+    }
 
     private static double clamp(double v) {
         return Math.max(0.05, Math.min(2.0, v));
@@ -79,15 +103,6 @@ public final class FinanceModule implements SimModule {
     public Map<String, Object> state() {
         return Map.of("volatility", volatility, "indexLevel", indexLevel,
                 "banks", banks.stream().map(Bank::snapshot).toList());
-    }
-
-    @Override
-    public void applyPerturbation(String type, Map<String, Object> params) {
-        switch (type) {
-            case "PRICE_SHOCK", "SHOCK" -> lastExternalShock = 0.25;
-            case "INJECT_LIQUIDITY" -> banks.forEach(b -> b.capital *= 1.2);
-            default -> { /* no-op */ }
-        }
     }
 
     @Override

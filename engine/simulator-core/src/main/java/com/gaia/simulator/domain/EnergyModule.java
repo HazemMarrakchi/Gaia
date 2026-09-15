@@ -29,6 +29,19 @@ public final class EnergyModule implements SimModule {
     }
 
     @Override
+    public EnergyModule copy() {
+        List<Plant> copyPlants = plants.stream()
+                .map(p -> new Plant(p.name, p.capacityMw, p.efficiency, p.type, p.status))
+                .toList();
+        List<GridNode> copyGrid = grid.stream()
+                .map(g -> new GridNode(g.id, g.region, g.baseLoadMw))
+                .toList();
+        EnergyModule m = new EnergyModule(copyPlants, copyGrid);
+        m.heatwaveIntensity = heatwaveIntensity;
+        return m;
+    }
+
+    @Override
     public Domain domain() {
         return Domain.ENERGY;
     }
@@ -68,12 +81,12 @@ public final class EnergyModule implements SimModule {
         if (shortage > 0.05 * demand) {
             emit(ctx, "GRID_STRESS", "global", Math.min(1.0, shortage / demand), "{}");
         }
-        grid.forEach(n -> updateLoadPrice(n, demand, price));
+        double totalBaseLoad = grid.stream().mapToDouble(g -> g.baseLoadMw).sum();
+        grid.forEach(n -> updateLoadPrice(n, demand, price, totalBaseLoad));
     }
 
-    private void updateLoadPrice(GridNode node, double demand, double price) {
-        node.lastLoadMw = demand * (node.baseLoadMw / grid.stream()
-                .mapToDouble(g -> g.baseLoadMw).sum());
+    private void updateLoadPrice(GridNode node, double demand, double price, double totalBaseLoad) {
+        node.lastLoadMw = demand * (node.baseLoadMw / totalBaseLoad);
         node.lastPrice = price;
     }
 
@@ -96,9 +109,9 @@ public final class EnergyModule implements SimModule {
 
     @Override
     public void applyPerturbation(String type, Map<String, Object> params) {
-        switch (type) {
-            case "HEATWAVE_EU_JULY", "HEATWAVE" -> heatwaveIntensity = 0.85;
-            case "CLOSE_PLANT", "PLANT_OUTAGE" -> {
+        switch (type.toLowerCase()) {
+            case "heatwave", "heatwave_eu_july" -> heatwaveIntensity = 0.85;
+            case "close_plant", "plant_outage", "outage" -> {
                 String name = (String) params.getOrDefault("plant", plants.isEmpty() ? null
                         : plants.get(0).name);
                 plants.stream().filter(p -> p.name.equals(name)).forEach(p -> p.status = Plant.Status.OUTAGE);

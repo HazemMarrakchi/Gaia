@@ -37,9 +37,18 @@ public class IngestionController {
 
     public IngestionController(KafkaTemplate<String, String> kafka) {
         this.kafka = kafka;
-        this.engine = new SimulationEngine(
-                WorldFactory.defaultWorld(3, 4, 3, 4, 3),
-                42L, 50L, Instant.parse("2026-09-15T00:00:00Z"));
+        this.entityBudget = Long.parseLong(System.getenv().getOrDefault("SIM_MAX_ENTITIES", "1000000"));
+        this.engine = newEngine();
+    }
+
+    private static final long SEED = 42L;
+    private static final Instant START = Instant.parse("2026-09-15T00:00:00Z");
+
+    private final long entityBudget;
+
+    private SimulationEngine newEngine() {
+        return new SimulationEngine(
+                WorldFactory.entitiesWorld(entityBudget), SEED, 50L, START);
     }
 
     @Scheduled(fixedDelayString = "${gaia.tick.period-ms:1000}")
@@ -69,6 +78,29 @@ public class IngestionController {
             }
             return out;
         }
+    }
+
+    /**
+     * Deterministic replay: same seed + same config ⇒ identical events. Runs a
+     * fresh clone and returns events in [fromTick, toTick] without publishing.
+     */
+    @GetMapping("/replay")
+    public List<JsonNode> replay(@RequestParam(defaultValue = "0") long fromTick,
+                                 @RequestParam(defaultValue = "100") long toTick) throws Exception {
+        if (toTick < fromTick || (toTick - fromTick) > 10_000) {
+            throw new IllegalArgumentException("replay window must be <= 10_000 ticks");
+        }
+        SimulationEngine clone = newEngine();
+        List<JsonNode> out = new java.util.ArrayList<>();
+        for (long i = 0; i <= toTick && out.size() < 5_000; i++) {
+            List<SimEvent> events = clone.step();
+            if (i >= fromTick) {
+                for (SimEvent e : events) {
+                    out.add(objectMapper.readTree(serialize(e)));
+                }
+            }
+        }
+        return out;
     }
 
     private void publish(List<SimEvent> events) {

@@ -1,9 +1,7 @@
 server:
-  port: ${SCENARIO_PORT:8082}
+  port: ${SCENARIO_PORT:8282}
 
 spring:
-  kafka:
-    bootstrap-servers: ${KAFKA_BROKERS:localhost:9093}
   data:
     redis:
       host: ${REDIS_HOST:localhost}

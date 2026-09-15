@@ -26,6 +26,21 @@ public final class TransportModule implements SimModule {
     }
 
     @Override
+    public TransportModule copy() {
+        List<Vehicle> copyVehicles = vehicles.stream()
+                .map(v -> {
+                    Vehicle copy = new Vehicle(v.id, v.type, v.averageTripTicks, v.emissionsPerTick);
+                    copy.remainingTicks = v.remainingTicks;
+                    return copy;
+                })
+                .toList();
+        TransportModule m = new TransportModule(copyVehicles);
+        m.fuelPriceIndex = fuelPriceIndex;
+        m.disruption = disruption;
+        return m;
+    }
+
+    @Override
     public Domain domain() {
         return Domain.TRANSPORT;
     }
@@ -70,10 +85,12 @@ public final class TransportModule implements SimModule {
 
     @Override
     public void applyPerturbation(String type, Map<String, Object> params) {
-        switch (type) {
-            case "FUEL_SPIKE", "ENERGY_PRICE_INCREASE" -> fuelPriceIndex += 0.4;
-            case "HEATWAVE", "WEATHER_DISRUPTION" -> disruption = 0.6;
-            case "DIVERT_SHIPMENT_ROUTE" -> vehicles.forEach(v -> v.remainingTicks *= 0.7);
+        switch (type.toLowerCase()) {
+            case "fuel_spike", "energy_price_increase" -> fuelPriceIndex += 0.4;
+            case "heatwave", "weather_disruption", "strain" -> disruption = 0.6;
+            case "divert_shipment_route" -> vehicles.forEach(v -> v.remainingTicks *= 0.7);
+            case "delay" -> vehicles.forEach(v -> v.remainingTicks += v.averageTripTicks * 0.5);
+            case "crash" -> disruption = 0.9;
             default -> { /* no-op */ }
         }
     }

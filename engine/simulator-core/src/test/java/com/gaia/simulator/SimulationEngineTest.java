@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -39,11 +40,19 @@ class SimulationEngineTest {
     }
 
     @Test
-    void everyTickEmitsAcrossAllDomains() {
-        List<SimEvent> events = engine(7L).run(100);
-        var domains = events.stream().map(e -> e.domain().name()).distinct().toList();
+    void stressedWorldEmitsAcrossAllDomains() {
+        SimulationEngine e = new SimulationEngine(WorldFactory.defaultWorld(3, 4, 3, 4, 3),
+                7L, 50L, Instant.parse("2026-09-15T00:00:00Z"));
+        e.state().module("energy").applyPerturbation("HEATWAVE_EU_JULY", Map.of());
+        e.state().module("cities").applyPerturbation("HEATWAVE", Map.of());
+        e.state().module("transport").applyPerturbation("FUEL_SPIKE", Map.of());
+        e.state().module("finance").applyPerturbation("SHOCK", Map.of());
 
-        assertThat(domains).containsExactlyInAnyOrder("ENERGY", "CITIES", "TRANSPORT", "FINANCE");
+        List<SimEvent> events = e.run(100);
+        var domains = events.stream().map(x -> x.domain().name()).distinct().toList();
+
+        assertThat(domains).as("a stressed world must emit on all four domains")
+                .containsExactlyInAnyOrder("ENERGY", "CITIES", "TRANSPORT", "FINANCE");
     }
 
     @Test
@@ -51,6 +60,38 @@ class SimulationEngineTest {
         SimulationEngine e = engine(5L);
         e.run(2);
         assertThat(e.tickIndex()).isEqualTo(2);
+    }
+
+    /** Cross-domain coupling is real: a heatwave must mechanically stress finance. */
+    @Test
+    void heatwaveCrisisPropagatesIntoFinance() {
+        SimulationEngine baseline = new SimulationEngine(WorldFactory.defaultWorld(25, 20, 18, 60, 12),
+                42L, 50L, Instant.parse("2026-09-15T00:00:00Z"));
+
+        SimulationEngine crisis = new SimulationEngine(WorldFactory.defaultWorld(25, 20, 18, 60, 12),
+                42L, 50L, Instant.parse("2026-09-15T00:00:00Z"));
+
+double baselineIdx = 0, crisisIdx = 0;
+        double baselineShock = 0, crisisShock = 0;
+        for (long i = 0; i < 120; i++) {
+            crisis.state().module("energy").applyPerturbation("HEATWAVE", Map.of());
+            baseline.step();
+            crisis.step();
+            baselineIdx = idx(baseline);
+            crisisIdx = idx(crisis);
+            baselineShock = baseline.externalShock();
+            crisisShock = crisis.externalShock();
+        }
+
+        assertThat(crisisShock).as("a heatwave must raise the engine's crisis EMA")
+                .isGreaterThan(baselineShock);
+        assertThat(crisisIdx).as("a heatwave must mechanically depress the market index")
+                .isLessThan(baselineIdx);
+    }
+
+    private static double idx(SimulationEngine engine) {
+        Object idx = engine.state().module("finance").state().get("indexLevel");
+        return idx instanceof Number n ? n.doubleValue() : Double.NaN;
     }
 
     /** Event identity: comparison ignores the random UUID but keeps all sim-relevant fields. */

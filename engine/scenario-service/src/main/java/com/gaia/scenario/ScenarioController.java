@@ -10,18 +10,20 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * What-if engine: clones a world, applies perturbations, runs N ticks and
- * returns the diff against the baseline. Results cached in Redis.
+ * What-if engine: clones the world state, applies perturbations, runs N ticks
+ * and returns the diff against an unperturbed baseline. Results cached in Redis.
  */
 @RestController
 @RequestMapping("/scenarios")
 public class ScenarioController {
+
+    private static final long STEP_MS = 50L;
+    private static final Instant START = Instant.parse("2026-09-15T00:00:00Z");
 
     private final StringRedisTemplate redis;
 
@@ -32,48 +34,94 @@ public class ScenarioController {
     @PostMapping
     public Map<String, Object> run(@RequestBody ScenarioRequest req) {
         String id = UUID.randomUUID().toString();
+        long seed = req.seed() == 0 ? 7L : req.seed();
 
-        SimulationState baseline = WorldFactory.defaultWorld(3, 4, 3, 4, 3);
-        SimulationEngine base = new SimulationEngine(
-                cloneState(baseline), 7L, 50L, Instant.parse("2026-09-15T00:00:00Z"));
+        SimulationState world = WorldFactory.entitiesWorld(req.entities() == 0 ? 10_000 : req.entities());
+        SimulationState baseState = world.deepCopy();
+        SimulationState scenarioState = world.deepCopy();
+
+        SimulationEngine base = new SimulationEngine(baseState, seed, STEP_MS, START);
         base.run(req.baselineTicks());
 
-        SimulationEngine scenario = new SimulationEngine(
-                cloneState(baseline), 7L, 50L, Instant.parse("2026-09-15T00:00:00Z"));
+        SimulationEngine scenario = new SimulationEngine(scenarioState, seed, STEP_MS, START);
         scenario.run(req.baselineTicks());
-        req.perturbations().forEach(p -> scenario.state().snapshot().keySet().forEach(domain ->
-                simulatePerturbation(scenario, domain, p)));
+        req.perturbations().forEach(p -> scenarioState.snapshot().keySet().forEach(domain ->
+                applyPerturbation(scenario, domain, p)));
         long scenarioEvents = scenario.run(req.ticks()).size();
 
-        Map<String, Object> result = new HashMap<>();
+        Map<String, Object> result = new java.util.HashMap<>();
         result.put("id", id);
         result.put("baselineTick", base.tickIndex());
+        result.put("scenarioTicks", scenario.tickIndex());
         result.put("scenarioEvents", scenarioEvents);
-        result.put("diffs", diffStats(base.state().snapshot(), scenario.state().snapshot()));
+        result.put("diffs", diffStats(baseState.snapshot(), scenarioState.snapshot()));
+        result.put("perturbations", req.perturbations());
 
         redis.opsForValue().set("gaia:scenario:" + id, result.toString());
         return result;
     }
 
-    private static SimulationState cloneState(SimulationState src) {
-        // Scaffold: rebuild an identically-seeded world (deep snapshot cloning
-        // is the production route via PostGIS state JSON).
-        return WorldFactory.defaultWorld(3, 4, 3, 4, 3);
-    }
-
-    private void simulatePerturbation(SimulationEngine scenario, String domain, String perturbation) {
+    private void applyPerturbation(SimulationEngine scenario, String domain, String perturbation) {
         scenario.state().module(domain).applyPerturbation(perturbation, Map.of());
     }
 
-    private Map<String, Object> diffStats(Map<String, Map<String, Object>> base,
-                                          Map<String, Map<String, Object>> scenario) {
+    /** Compares final snapshots of baseline vs scenario on stable metrics. */
+    private Map<String, Map<String, Object>> diffStats(Map<String, Map<String, Object>> base,
+                                                       Map<String, Map<String, Object>> scenario) {
         return Map.of(
-                "energy", Map.of("deltaPlants", 0, "heatwaveApplied",
-                        !base.getOrDefault("energy", Map.of()).getOrDefault("heatwaveIntensity", 0.0)
-                                .equals(scenario.getOrDefault("energy", Map.of())
-                                        .getOrDefault("heatwaveIntensity", 0.0))));
+                "energy", Map.of(
+                        "heatwaveDelta", scalar(base, scenario, "energy", "heatwaveIntensity"),
+                        "outageDelta", outages(scenario, "energy") - outages(base, "energy")),
+                "cities", Map.of(
+                        "waterLevelDelta", avgDelta(base, scenario, "cities", "districts", "waterLevel"),
+                        "strainDelta", scalar(base, scenario, "cities", "heatwave")),
+                "transport", Map.of(
+                        "delayDelta", avgDelta(base, scenario, "transport", "vehicles", "remainingTicks"),
+                        "fuelDelta", scalar(base, scenario, "transport", "fuelPriceIndex")),
+                "finance", Map.of(
+                        "indexDelta", scalar(base, scenario, "finance", "indexLevel"),
+                        "volatilityDelta", scalar(base, scenario, "finance", "volatility"),
+                        "capitalDelta", avgDelta(base, scenario, "finance", "banks", "capital")));
     }
 
-    public record ScenarioRequest(int baselineTicks, int ticks, List<String> perturbations) {
+    private static double scalar(Map<String, Map<String, Object>> a,
+                                 Map<String, Map<String, Object>> b, String domain, String key) {
+        return scalarOf(b, domain, key) - scalarOf(a, domain, key);
+    }
+
+    private static double scalarOf(Map<String, Map<String, Object>> snap, String domain, String key) {
+        Object v = snap.getOrDefault(domain, Map.of()).get(key);
+        return v instanceof Number n ? n.doubleValue() : 0.0;
+    }
+
+    private static int outages(Map<String, Map<String, Object>> snap, String domain) {
+        Object plants = snap.getOrDefault(domain, Map.of()).get("plants");
+        if (!(plants instanceof List<?> list)) return 0;
+        return (int) list.stream().filter(p -> {
+            Map<?, ?> m = (Map<?, ?>) p;
+            return "OUTAGE".equals(m.get("status"));
+        }).count();
+    }
+
+    private static double avgDelta(Map<String, Map<String, Object>> a,
+                                   Map<String, Map<String, Object>> b,
+                                   String domain, String listKey, String field) {
+        return avg(b, domain, listKey, field) - avg(a, domain, listKey, field);
+    }
+
+    private static double avg(Map<String, Map<String, Object>> snap, String domain,
+                              String listKey, String field) {
+        Object list = snap.getOrDefault(domain, Map.of()).get(listKey);
+        if (!(list instanceof List<?> rows) || rows.isEmpty()) return 0;
+        return rows.stream().mapToDouble(r -> num((Map<String, Object>) r, field)).average().orElse(0);
+    }
+
+    private static double num(Map<String, Object> row, String key) {
+        Object v = row.get(key);
+        return v instanceof Number n ? n.doubleValue() : 0.0;
+    }
+
+    public record ScenarioRequest(int baselineTicks, int ticks, List<String> perturbations,
+                                  long seed, long entities) {
     }
 }

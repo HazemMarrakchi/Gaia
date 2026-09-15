@@ -4,54 +4,53 @@
 
 A GAIA simulation is a sequence of **ticks**. Each tick has a timestamp and a deterministic
 seed-derived random sequence. All state lives in `SimulationState` — a registry of domain
-`Module` instances, each exposing `tick(ctx)` and `state()`.
+`SimModule` instances, each exposing `tick(ctx)`, `state()`, `applyPerturbation(...)`
+and `copy()`.
 
 Reproducibility contract: same (config, seed, interventions) ⇒ identical sequence of events.
-This is what powers replay ("replay the last 24 hours") and "what-if" (clone state → perturb →
-run N ticks → diff).
+This is what powers replay (`same seed ⇒ same events`) and "what-if"
+(`deepCopy()` state → perturb → run N ticks → diff per domain).
+
+## World construction
+
+`WorldFactory` builds a configurable world (`WorldConfig(districts, plants, gridNodes,
+vehicles, banks)`). `WorldConfig.entities(n)` distributes a budget so the total entity
+count ≈ `n` (vehicles ≈ 90 %, the four other entity types ≈ 2.5 % each). Entity generation is
+deterministic (indexed by seed), spread over 8 named regions:
+
+- `WorldFactory.defaultWorld(...)` — small hand-picked world for tests.
+- `WorldFactory.entitiesWorld(n)` — scale world; the ingestion-service default is
+  `n = 1_000_000` (`SIM_MAX_ENTITIES`), measured at ~130 ticks/s.
 
 ## Domains
 
 ### 1. energy (Energy & Climate)
-Entities:
-- `PowerPlant` (type: solar/wind/thermal/backup, capacity, status)
-- `GridNode` (region, load, price)
-- `Battery` (state of charge)
-- `WeatherCell` (temperature, irradiance, wind, anomaly flags)
-
-Emission event: `ENERGY_PRICE_CHANGED`, `LOAD_SPIKE`, `PLANT_OUTAGE`, `GRID_STRESS`.
-Couplings: weather anomalies (heatwave) raise plant load; transport demand raises grid load.
+Entities: `EnergyModule.Plant` (type: solar/wind/thermal/backup, capacity, status),
+`EnergyModule.GridNode` (region, base load, current load, price).
+Emission: `PLANT_OUTAGE`, `GRID_STRESS`.
+Couplings: heatwave perturbation raises demand → possible outages; grid demand feeds cities.
+Aggregate price/load derived from grid totals.
 
 ### 2. cities
-Entities:
-- `District` (population, buildings)
-- `Building` (class: residential/office/hospital, power draw, water draw)
-- `Hospital` (capacity, occupancy) — saturation drives public strain
-- `WaterTank` (level, inflow/outflow)
-
-Emission: `CITY_STRAIN`, `HOSPITAL_LOAD`, `WATER_SHORTAGE`.
-Couplings: grid stress ↑ → power draw curtailed → hospital strain; heat → hospital admissions ↑.
+Entities: `CitiesModule.District` (strain, water level, heatwave flag).
+Emission: `CITY_STRAIN`, `WATER_SHORTAGE`, `HOSPITAL_LOAD`.
+Couplings: strain rises with district count load; heatwave/outage perturbations drive
+water level down and strain up.
 
 ### 3. transport
-Entities:
-- `TransportNetwork` (nodes/edges)
-- `Vehicle` (type truck/train/ship, cargo, route)
-- `Shipment` (owner, origin, destination, deadline)
-- `TrafficMetric` (flow, speed, delay, emissions)
-
-Emission: `FLOW_CHANGED`, `SHIPMENT_DELAY`, `EMISSIONS_SPIKE`.
-Couplings: energy price ↑ → cost/lag; weather disruption reduces network capacity.
+Entities: `TransportModule.Vehicle` (type: cargo/truck/train, base delay, current delay,
+emissions).
+Emission: `SHIPMENT_DELAY`, `EMISSIONS_SPIKE`, `FLOW_CHANGED`.
+Couplings: delay/fuel perturbations raise delays, cut flow (1 - normalized delay).
 
 ### 4. finance
-Entities:
-- `Market` (index, volatility)
-- `Bank` (capital, exposure)
-- `RiskDesk` (VaR, limits)
-- `CashFlow` (currency flows between actors)
-
+Entities: `FinanceModule.Bank` (index exposure, capital, volatility contribution).
 Emission: `PRICE_SHOCK`, `LIQUIDITY_STRESS`, `VAR_BREACH`.
-Couplings: any domain crisis may feed `shock` into `Market`; banks exposed to energy/transport
-sector show liquidity stress.
+Cross-domain coupling: `SimulationEngine.step()` computes an EMA of the maximum event
+severity across all domains and exposes it as `TickContext.externalShock()`;
+`FinanceModule` applies `shock = max(lastShock, min(0.5, externalShock))` so a real crisis
+anywhere in the system (heatwave, outage, delay) mechanically propagates into the market —
+no hard-coded finance shock.
 
 ## Event schema (Kafka `gaia.sim.events`)
 
@@ -62,26 +61,31 @@ sector show liquidity stress.
   "ts": "2026-09-15T10:00:00Z",
   "domain": "energy",
   "type": "LOAD_SPIKE",
-  "region": "eu-west",
+  "region": "global",
   "severity": 0.62,
-  "payload": {"gridNode": "node-42", "loadMw": 980}
+  "payload": {}
 }
 ```
 
-Topic layout: `gaia.sim.events` (all), `gaia.sim.aggregates` (flink), `gaia.sim.alerts`
-(filtered severity > threshold), partitioned by `domain`.
+Topic layout: `gaia.sim.events` (all events), `gaia.sim.aggregates` (per-domain
+sliding-window stats from Flink).
 
 ## Scenario (what-if)
 
-`POST /scenarios {baseId, perturbations: ["HEATWAVE_EU_JULY"], ticks: 240, seed: 7}`
-1. Clone current snapshot (PostGIS, per-domain state JSON) → worker pod.
-2. Apply perturbation via `Module.applyPerturbation(...)`.
-3. Run N ticks; compute diff metrics vs baseline snapshot.
-4. Cache diff in Redis; World Brain replays both paths side-by-side.
+`POST /scenarios {"baselineTicks": 240, "ticks": 120, "perturbations": ["heatwave"], "seed": 42, "entities": 1000000}`
 
-Interventions the scenario engine can propose (`ai-service` rule base + forecast):
+1. Build a fresh world of the requested size + seed, run `baselineTicks` → snapshot A.
+2. `deepCopy()` the resulting state, apply the perturbation (via `applyPerturbation`) → run `ticks`.
+3. Snapshot B; compute per-domain deltas (energy: outages, heatwave; cities: water level,
+   strain; transport: fuel, delay; finance: index, volatility, capital).
+4. Cache the diff in Redis (`gaia:scenario:{id}`); the World Brain shows the delta table and
+   asks the AI service for interventions.
+
+Supported perturbations: `heatwave`, `outage`, `strain`, `delay`, `crash`, `liquidity`.
+
+Interventions the AI service can propose (`ai-service` rule base + anomaly detection):
 `RAISE_BATTERY_DISCHARGE`, `CLOSE_PLANT_X`, `REDUCE_SHIFT_FREQUENCY`,
-`INJECT_LIQUIDITY`, `DIVERT_SHIPMENT_ROUTE`.
+`INJECT_LIQUIDITY`, `DIVERT_SHIPMENT_ROUTE`, `REVIEW_ALERT`.
 
 ## Domain module contract (Java)
 
@@ -91,8 +95,11 @@ public interface SimModule {
     void tick(TickContext ctx);
     Map<String, Object> state();
     void applyPerturbation(String key, Map<String, Object> params);
+    SimModule copy();                       // deep clone for what-if / replay
     List<SimEvent> drainEvents();
 }
 ```
+
 The engine iterates modules in a fixed dependency order (energy → cities → transport →
-finance) so one domain's emissions are visible to downstream domains within the same tick.
+finance) so one domain's emissions are visible to downstream domains within the same tick;
+`SimulationState.deepCopy()` clones every module so scenario runs never affect the live world.
