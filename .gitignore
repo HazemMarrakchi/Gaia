@@ -37,6 +37,9 @@ venv/
 .env
 *.log
 
+# Local tooling (Maven installed locally as a build workaround, not part of the repo)
+.tools/
+
 # IDE / OS
 .idea/
 *.iml

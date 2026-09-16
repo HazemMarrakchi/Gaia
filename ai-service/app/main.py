@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST
@@ -11,6 +12,18 @@ app = FastAPI(
     title="GAIA AI Service",
     description="Forecasting, anomaly detection and scenario-suggestion engine for GAIA",
     version="0.1.0",
+)
+
+# World Brain (:4302) + Portal (:3000) call this API straight from the browser.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:4302",
+        "http://localhost:4200",
+        "http://localhost:3000",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(forecast_router, prefix="/forecast", tags=["forecast"])
