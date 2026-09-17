@@ -8,4 +8,7 @@ export default defineNuxtConfig({
       worldBrainUrl: process.env.WORLD_BRAIN_URL || 'http://localhost:4302',
     },
   },
+  server: {
+    host: '0.0.0.0',
+  },
 });

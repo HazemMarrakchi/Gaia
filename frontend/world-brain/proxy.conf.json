@@ -1,0 +1,1 @@
+{"/scenarios": {"target": "http://localhost:8282/scenarios"}, "/events": {"target": "http://localhost:8181/events"}}
