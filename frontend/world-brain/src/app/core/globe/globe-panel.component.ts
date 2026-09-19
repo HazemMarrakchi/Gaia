@@ -202,10 +202,15 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     this.controls.minDistance = 7.5;
     this.controls.maxDistance = 40;
 
-    this.scene.add(new THREE.AmbientLight(0x334466, 0.55));
-    const sun = new THREE.DirectionalLight(0xfff4e0, 2.4);
+    // Lighting setup for realistic planet look
+    this.scene.add(new THREE.AmbientLight(0x223355, 0.4)); // soft blue ambient
+    const sun = new THREE.DirectionalLight(0xfff8e8, 1.8); // warm sunlight
     sun.position.copy(this.sunDirection).multiplyScalar(60);
     this.scene.add(sun);
+    // Add a subtle fill light from opposite side to soften shadows
+    const fill = new THREE.DirectionalLight(0x4466aa, 0.3);
+    fill.position.set(-30, -20, -40);
+    this.scene.add(fill);
 
     this.scene.add(this.buildStars());
     this.earth.add(this.buildEarth());
@@ -356,9 +361,9 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     const material = new THREE.MeshStandardMaterial({
       map: day,
       emissiveMap: night,
-      emissive: new THREE.Color(0xffd68c),
-      emissiveIntensity: 0.55,
-      roughness: 0.85,
+      emissive: new THREE.Color(0xffaa44),
+      emissiveIntensity: 0.4,
+      roughness: 0.9,
       metalness: 0.0,
     });
     return new THREE.Mesh(new THREE.SphereGeometry(R, 96, 96), material);

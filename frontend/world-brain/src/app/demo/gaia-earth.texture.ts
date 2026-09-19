@@ -31,17 +31,21 @@ const lonLatToXY = (lon: number, lat: number, w: number, h: number): [number, nu
 ];
 
 function paintEarth(ctx: CanvasRenderingContext2D, w: number, h: number, night: boolean): void {
-  const ocean = night ? '#020610' : '#06121f';
-  ctx.fillStyle = ocean;
-  ctx.fillRect(0, 0, w, h);
-
-  // subtle latitude ocean gradient
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, night ? 'rgba(56,189,248,0.12)' : 'rgba(56,189,248,0.10)');
-  grad.addColorStop(0.5, 'rgba(0,0,0,0)');
-  grad.addColorStop(1, night ? 'rgba(56,189,248,0.12)' : 'rgba(56,189,248,0.10)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, w, h);
+  if (night) {
+    // Night side: deep dark blue with subtle city glow
+    ctx.fillStyle = '#030812';
+    ctx.fillRect(0, 0, w, h);
+  } else {
+    // Day side: realistic ocean blue with depth gradient
+    const oceanGrad = ctx.createLinearGradient(0, 0, 0, h);
+    oceanGrad.addColorStop(0, '#0a3d62');
+    oceanGrad.addColorStop(0.3, '#0d5c8a');
+    oceanGrad.addColorStop(0.5, '#0e6ba8');
+    oceanGrad.addColorStop(0.7, '#0d5c8a');
+    oceanGrad.addColorStop(1, '#0a3d62');
+    ctx.fillStyle = oceanGrad;
+    ctx.fillRect(0, 0, w, h);
+  }
 
   for (const [lon, lat, radius, stretch] of LAND) {
     const [x, y] = lonLatToXY(lon, lat, w, h);
@@ -49,14 +53,16 @@ function paintEarth(ctx: CanvasRenderingContext2D, w: number, h: number, night: 
     const ry = (radius / 180) * h * stretch * 0.9;
     const blob = ctx.createRadialGradient(x, y, 0, x, y, Math.max(rx, ry));
     if (night) {
-      blob.addColorStop(0, '#1c2438');
-      blob.addColorStop(0.7, '#101828');
-      blob.addColorStop(1, 'rgba(16,24,40,0)');
+      // Night: dark landmasses with warm city lights at center
+      blob.addColorStop(0, '#1a2332');
+      blob.addColorStop(0.5, '#141c2a');
+      blob.addColorStop(1, 'rgba(10,15,25,0)');
     } else {
-      blob.addColorStop(0, '#1d5c4d');
-      blob.addColorStop(0.55, '#14503f');
-      blob.addColorStop(0.85, '#0c2f36');
-      blob.addColorStop(1, 'rgba(12,47,54,0)');
+      // Day: realistic earth tones - green forests, brown mountains, tan deserts
+      blob.addColorStop(0, '#2d6a4f');
+      blob.addColorStop(0.4, '#40916c');
+      blob.addColorStop(0.7, '#8b7355');
+      blob.addColorStop(1, 'rgba(61,43,31,0)');
     }
     ctx.fillStyle = blob;
     ctx.beginPath();
@@ -64,24 +70,24 @@ function paintEarth(ctx: CanvasRenderingContext2D, w: number, h: number, night: 
     ctx.fill();
   }
 
-  // polar ice caps
-  const ice = night ? 'rgba(148,184,220,0.25)' : 'rgba(226,240,248,0.75)';
+  // Polar ice caps - bright white
+  const ice = night ? 'rgba(200,220,240,0.4)' : 'rgba(240,248,255,0.9)';
   ctx.fillStyle = ice;
-  ctx.fillRect(0, 0, w, h * 0.045);
-  ctx.fillRect(0, h * 0.955, w, h * 0.045);
+  ctx.fillRect(0, 0, w, h * 0.04);
+  ctx.fillRect(0, h * 0.96, w, h * 0.04);
 
   if (night) {
-    // city lights: deterministic sparkle clustered on land blobs
+    // City lights: warm golden sparkles on land
     let seed = 7;
     const rnd = (): number => {
       seed = (seed * 16807) % 2147483647;
       return seed / 2147483647;
     };
-    ctx.fillStyle = 'rgba(255,214,140,0.9)';
-    for (let i = 0; i < 900; i++) {
+    ctx.fillStyle = 'rgba(255,200,100,0.8)';
+    for (let i = 0; i < 1200; i++) {
       const b = LAND[(rnd() * LAND.length) | 0];
-      const [x, y] = lonLatToXY(b[0] + (rnd() - 0.5) * b[2] * 1.4, b[1] + (rnd() - 0.5) * b[2], w, h);
-      ctx.fillRect(x, y, 1.4, 1.4);
+      const [x, y] = lonLatToXY(b[0] + (rnd() - 0.5) * b[2] * 1.3, b[1] + (rnd() - 0.5) * b[2] * 0.8, w, h);
+      ctx.fillRect(x, y, 1.5, 1.5);
     }
   }
 }
