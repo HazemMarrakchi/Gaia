@@ -1,0 +1,51 @@
+name: Deploy GAIA Live Demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/world-brain/**"
+      - ".github/workflows/gaia-demo-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/world-brain
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/world-brain/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Unit tests
+        run: npm run test -- --browsers ChromeHeadlessCI
+
+      - name: Production demo build
+        run: npm run build -- --base-href /Gaia/
+
+      - name: Strip photo textures (demo uses procedural Earth)
+        run: |
+          rm -rf dist/world-brain/browser/assets/planets
+          cp dist/world-brain/browser/index.html dist/world-brain/browser/404.html
+          du -sh dist/world-brain/browser
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: frontend/world-brain/dist/world-brain/browser
+          force_orphan: true
