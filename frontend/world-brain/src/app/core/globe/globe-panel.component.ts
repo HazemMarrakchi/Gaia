@@ -233,7 +233,7 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
 
     const loop = () => {
       const t = this.clock.elapsedTime;
-      this.earth.rotation.y = t * 0.02; // slow planet rotation
+      this.earth.rotation.y = t * 0.045; // slow, clearly visible planet rotation
       this.animateMarkers(t);
       this.updateHover();
       this.controls?.update();
