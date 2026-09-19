@@ -332,16 +332,12 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     }
 
     // pulses only for genuinely new events (poll backfills stay silent)
-    let worldPulseSpawned = false;
     for (const e of fresh.slice(0, 12)) {
       const stat = this.stats.find((s) => s.region === e.region);
-      if (stat) {
-        this.spawnPulse(stat, false);
-      } else if (!worldPulseSpawned) {
-        // at most one shockwave per batch so the planet stays readable
-        this.spawnWorldPulse();
-        worldPulseSpawned = true;
-      }
+      if (stat) this.spawnPulse(stat);
+      // World-scope events carry no region: they are surfaced by the HUD's
+      // SYSTEMIC SHOCK meter instead of a globe-wide shell (which used to
+      // blanket the planet in overlapping wireframes).
     }
   }
 
@@ -495,23 +491,8 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  private spawnPulse(stat: RegionStat, worldScope: boolean): void {
+  private spawnPulse(stat: RegionStat): void {
     const color = DOMAIN_COLORS[stat.lastDomain] ?? 0x37e0a2;
-
-    if (worldScope) {
-      // Global event → a see-through shockwave SHELL, never a filled ball:
-      // the old opaque grey sphere surrounded the planet and hid it while blinking.
-      const shell = new THREE.Mesh(
-        new THREE.SphereGeometry(R * 1.06, 24, 16),
-        new THREE.MeshBasicMaterial({
-          color, wireframe: true, transparent: true, opacity: 0.3, depthWrite: false,
-        }),
-      );
-      this.earth.add(shell);
-      this.pulses.push({ mesh: shell, born: this.clock.elapsedTime, life: 1.4 });
-      return;
-    }
-
     const pulse = new THREE.Mesh(
       new THREE.SphereGeometry(0.16, 24, 24),
       new THREE.MeshBasicMaterial({
@@ -521,13 +502,6 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     pulse.position.copy(this.toCartesian(R * 1.02, stat.lat, stat.lon));
     this.earth.add(pulse);
     this.pulses.push({ mesh: pulse, born: this.clock.elapsedTime, life: 1.1 });
-  }
-
-  private spawnWorldPulse(): void {
-    this.spawnPulse({
-      region: 'global', lat: 0, lon: 0, events: 0, maxSeverity: 0,
-      lastType: '', lastDomain: '', lastSeenTick: 0,
-    }, true);
   }
 
   private updateHover(): void {
