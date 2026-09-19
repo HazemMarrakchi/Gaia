@@ -234,7 +234,7 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     const loop = () => {
       const t = this.clock.elapsedTime;
       this.earth.rotation.y = t * 0.02; // slow planet rotation
-      this.animateMarkers();
+      this.animateMarkers(t);
       this.updateHover();
       this.controls?.update();
       this.renderer?.render(this.scene, this.camera);
@@ -440,7 +440,7 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     this.markers.set(r.region, { dot, halo, ring, stat });
   }
 
-  private animateMarkers(): void {
+  private animateMarkers(t: number): void {
     for (const m of this.markers.values()) {
       const active = m.stat.events > 0;
       const severity = m.stat.maxSeverity;
@@ -448,16 +448,19 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
       (m.dot.material as THREE.MeshBasicMaterial).color.setHex(color);
       (m.halo.material as THREE.MeshBasicMaterial).color.setHex(color);
 
-      // static hot-spot marker: size reflects live severity — no breathing,
-      // no beating rings, no waves of any kind
-      const heat = active ? 0.55 + severity * 0.5 : 0.35;
-      m.dot.scale.setScalar(heat);
-      m.halo.scale.setScalar(heat);
-      (m.halo.material as THREE.MeshBasicMaterial).opacity = active ? 0.5 : 0.22;
+      // size & breathing track live severity
+      const heat = active ? 0.5 + severity : 0.35;
+      const breathe = 1 + 0.16 * Math.sin(t * (1.2 + severity * 2.4));
+      m.dot.scale.setScalar(heat * breathe);
+      m.halo.scale.setScalar(heat * (1 + 0.1 * Math.sin(t * (2 + severity * 3))));
+      (m.halo.material as THREE.MeshBasicMaterial).opacity = active ? 0.55 : 0.25;
 
-      // the ring stays invisible; it is only kept as the pointer-hover target
-      m.ring.scale.setScalar(1);
-      (m.ring.material as THREE.MeshBasicMaterial).opacity = 0;
+      // the wave lives ONLY on the point: a small ring that beats outward
+      // from the hot-spot — faster and brighter when the region is hotter
+      const cycle = (t * (0.5 + severity * 1.4)) % 1;
+      m.ring.scale.setScalar(1 + cycle * 2.4);
+      (m.ring.material as THREE.MeshBasicMaterial).opacity =
+        (active ? 0.65 : 0.12) * (1 - cycle);
     }
   }
 
