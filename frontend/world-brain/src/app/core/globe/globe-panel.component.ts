@@ -158,9 +158,7 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   private camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 400);
   private controls?: OrbitControls;
   private earth = new THREE.Group();
-  private cloudMesh?: THREE.Mesh;
   private markers = new Map<string, Marker>();
-  private pulses: Array<{ mesh: THREE.Mesh; born: number; life: number }> = [];
   private rafId = 0;
   private pollId = 0;
   private lastEventIds = new Set<string>();
@@ -234,12 +232,9 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     }
 
     const loop = () => {
-      const dt = this.clock.getDelta();
       const t = this.clock.elapsedTime;
       this.earth.rotation.y = t * 0.02; // slow planet rotation
-      if (this.cloudMesh) this.cloudMesh.rotation.y += dt * 0.0045;
-      this.animateMarkers(t);
-      this.animatePulses(t);
+      this.animateMarkers();
       this.updateHover();
       this.controls?.update();
       this.renderer?.render(this.scene, this.camera);
@@ -312,7 +307,6 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   }
 
   private applyEvents(events: SimEventDto[]): void {
-    const fresh = events.filter((e) => !this.lastEventIds.has(e.id));
     this.lastEventIds = new Set(events.map((e) => e.id));
 
     for (const s of this.stats) {
@@ -331,14 +325,7 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
       }
     }
 
-    // pulses only for genuinely new events (poll backfills stay silent)
-    for (const e of fresh.slice(0, 12)) {
-      const stat = this.stats.find((s) => s.region === e.region);
-      if (stat) this.spawnPulse(stat);
-      // World-scope events carry no region: they are surfaced by the HUD's
-      // SYSTEMIC SHOCK meter instead of a globe-wide shell (which used to
-      // blanket the planet in overlapping wireframes).
-    }
+    // no expanding pulses — the globe shows static hot-spot markers only
   }
 
   // ── scene construction ────────────────────────────────────────────────
@@ -453,7 +440,7 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     this.markers.set(r.region, { dot, halo, ring, stat });
   }
 
-  private animateMarkers(t: number): void {
+  private animateMarkers(): void {
     for (const m of this.markers.values()) {
       const active = m.stat.events > 0;
       const severity = m.stat.maxSeverity;
@@ -461,47 +448,17 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
       (m.dot.material as THREE.MeshBasicMaterial).color.setHex(color);
       (m.halo.material as THREE.MeshBasicMaterial).color.setHex(color);
 
-      // size & breathing track live severity
-      const heat = active ? 0.5 + severity : 0.35;
-      const breathe = 1 + 0.16 * Math.sin(t * (1.2 + severity * 2.4));
-      m.dot.scale.setScalar(heat * breathe);
-      m.halo.scale.setScalar(heat * (1 + 0.1 * Math.sin(t * (2 + severity * 3))));
-      (m.halo.material as THREE.MeshBasicMaterial).opacity = active ? 0.55 : 0.25;
+      // static hot-spot marker: size reflects live severity — no breathing,
+      // no beating rings, no waves of any kind
+      const heat = active ? 0.55 + severity * 0.5 : 0.35;
+      m.dot.scale.setScalar(heat);
+      m.halo.scale.setScalar(heat);
+      (m.halo.material as THREE.MeshBasicMaterial).opacity = active ? 0.5 : 0.22;
 
-      // the ring "beats" outward continuously — faster when hotter
-      const cycle = (t * (0.5 + severity * 1.4)) % 1;
-      m.ring.scale.setScalar(1 + cycle * 2.4);
-      (m.ring.material as THREE.MeshBasicMaterial).opacity =
-        (active ? 0.65 : 0.12) * (1 - cycle);
+      // the ring stays invisible; it is only kept as the pointer-hover target
+      m.ring.scale.setScalar(1);
+      (m.ring.material as THREE.MeshBasicMaterial).opacity = 0;
     }
-  }
-
-  private animatePulses(t: number): void {
-    this.pulses = this.pulses.filter((p) => {
-      const age = (t - p.born) / p.life;
-      if (age >= 1) {
-        this.earth.remove(p.mesh);
-        p.mesh.geometry.dispose();
-        (p.mesh.material as THREE.Material).dispose();
-        return false;
-      }
-      p.mesh.scale.setScalar(1 + age * 3.2);
-      (p.mesh.material as THREE.MeshBasicMaterial).opacity = 0.75 * (1 - age);
-      return true;
-    });
-  }
-
-  private spawnPulse(stat: RegionStat): void {
-    const color = DOMAIN_COLORS[stat.lastDomain] ?? 0x37e0a2;
-    const pulse = new THREE.Mesh(
-      new THREE.SphereGeometry(0.16, 24, 24),
-      new THREE.MeshBasicMaterial({
-        color, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false,
-      }),
-    );
-    pulse.position.copy(this.toCartesian(R * 1.02, stat.lat, stat.lon));
-    this.earth.add(pulse);
-    this.pulses.push({ mesh: pulse, born: this.clock.elapsedTime, life: 1.1 });
   }
 
   private updateHover(): void {
