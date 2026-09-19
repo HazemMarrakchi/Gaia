@@ -65,6 +65,10 @@ public class ScenarioController {
         scenario.run(req.baselineTicks());
         req.perturbations().forEach(p -> scenarioState.snapshot().keySet().forEach(domain ->
                 applyPerturbation(scenario, domain, p)));
+
+        // Run both engines for the scenario window so the diff compares
+        // "baseline at T+N" vs "scenario at T+N" — not a frozen snapshot.
+        base.run(req.ticks());
         long scenarioEvents = scenario.run(req.ticks()).size();
 
         Map<String, Map<String, Object>> diffs = diffStats(baseState.snapshot(), scenarioState.snapshot());
@@ -77,10 +81,22 @@ public class ScenarioController {
         result.put("diffs", diffs);
         result.put("perturbations", req.perturbations());
 
-        redis.opsForValue().set("gaia:scenario:" + id, result.toString());
+        cache(id, result);
         meters.counter("gaia_sim_scenarios").increment();
         persist(id, seed, req, scenarioEvents, diffs);
         return result;
+    }
+
+    /**
+     * Best-effort Redis cache ({@code gaia:scenario:{id}}): a down cache must never
+     * fail a what-if run — the diff was already computed, so return it anyway.
+     */
+    private void cache(String id, Map<String, Object> result) {
+        try {
+            redis.opsForValue().set("gaia:scenario:" + id, result.toString());
+        } catch (Exception ex) {
+            log.warn("scenario {} not cached (Redis unavailable: {})", id, ex.getMessage());
+        }
     }
 
     /**

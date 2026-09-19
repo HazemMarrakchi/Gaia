@@ -24,7 +24,10 @@
   event to `gaia.sim.events`.
 - `GET /health/sim` — live tick counter + event count; `GET /events?limit=` — recent events.
 - `GET /replay?fromTick=&toTick=` — **deterministic replay**: rebuilds a same-seed world and
-  returns the exact events of the requested window without touching Kafka.
+  returns the exact events of the requested window without touching Kafka. Each record also
+  carries `state` — the full cross-domain snapshot at that tick — so the Replay view can render
+  world state (and the globe's crisis panel can derive the propagated `externalShock`) with no
+  live simulation running.
 - Exposes health + Prometheus metrics (Micrometer): `gaia_sim_ticks_total`,
   `gaia_sim_events_published_total`, `gaia_sim_events_by_domain_total{domain}`,
   `gaia_sim_tick_index`, `gaia_sim_max_severity{domain}`.

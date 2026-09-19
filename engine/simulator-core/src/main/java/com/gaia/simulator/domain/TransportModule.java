@@ -48,6 +48,13 @@ public final class TransportModule implements SimModule {
 
     @Override
     public void tick(TickContext ctx) {
+        // 0. Cross-domain coupling: a global energy/cities crisis strangles
+        //    logistics financing and delays (see TickContext.externalShock,
+        //    the engine's EMA of max severity).
+        double shock = ctx.externalShock();
+        if (shock > 0.1) {
+            emit(ctx, "DELAY_AMPLIFICATION", "global", Math.min(1.0, shock), "{}");
+        }
         double totalDelays = 0;
         double totalEmissions = 0;
         double flow = 0;

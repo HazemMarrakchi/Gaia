@@ -53,6 +53,13 @@ public final class CitiesModule implements SimModule {
 
     @Override
     public void tick(TickContext ctx) {
+        // 0. Cross-domain coupling: a global energy/cities crisis raises the
+        //    heat-health burden (see TickContext.externalShock, the engine's
+        //    EMA of max severity) and surfaces as heat-related incidents.
+        double shock = ctx.externalShock();
+        if (shock > 0.1 && !regions.isEmpty()) {
+            emit(ctx, "HEAT_INCIDENT", "global", Math.min(1.0, shock), "{}");
+        }
         // Heatwaves track the energy module's regional weather (coarser walk).
         if (ctx.rng().nextDouble() < 0.05 && !regions.isEmpty()) {
             String region = regions.get((int) (ctx.rng().nextDouble() * regions.size()));

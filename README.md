@@ -59,6 +59,18 @@ Flink (docker).
 
 ## Quick start
 
+### Windows — one click (recommended)
+
+```powershell
+.\START.bat          # checks prerequisites, starts infra + services + both frontends
+.\STOP.bat           # stops everything (docker + java + node + python)
+```
+
+`START.ps1` verifies Docker / JDK 21 / Maven / Node / Python, brings the infra up,
+builds the engine and both frontends, then opens each service in its own window.
+
+### Any OS — manual
+
 Prerequisites: Docker, JDK 21, Maven, Node 20+, Python 3.11+.
 
 ```bash
@@ -125,7 +137,7 @@ so shocks propagated across the system are real and visible in scenarios — not
 |-------------------------------|----------------------------------------------|----------------------------|
 | Sim events (1M entities, ~1/s) | `http://localhost:8181/events?limit=`        | live                      |
 | Health/tick                   | `http://localhost:8181/health/sim`           | `tick=N published=M`      |
-| Deterministic replay          | `http://localhost:8181/replay?fromTick&toTick` | same seed ⇒ same events  |
+| Deterministic replay          | `http://localhost:8181/replay?fromTick&toTick` | same seed ⇒ same events + per-tick `state` |
 | What-if scenario              | `POST http://localhost:8282/scenarios`       | per-domain deltas          |
 | AI suggestions                | `POST http://localhost:8091/scenario/suggest` | rule + anomaly based      |
 | Flink UI / Job status         | `http://localhost:8381`                      | job RUNNING               |

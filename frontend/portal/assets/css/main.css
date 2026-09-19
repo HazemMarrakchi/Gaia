@@ -1,25 +1,107 @@
 :root {
-  --bg: #0d1117;
-  --card: #161b22;
-  --accent: #58a6ff;
-  --text: #e6edf3;
+  color-scheme: dark;
+  --bg: #05080f;
+  --card: #0b1220;
+  --border: #1c2940;
+  --accent: #37e0a2;
+  --text: #e6edf7;
+  --muted: #94a3b8;
+  --mono: ui-monospace, 'Cascadia Code', 'SFMono-Regular', Menlo, monospace;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
-  background: var(--bg);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   color: var(--text);
+  background:
+    radial-gradient(1000px 520px at 82% -10%, rgba(55, 224, 162, .09), transparent 60%),
+    radial-gradient(800px 460px at 4% 6%, rgba(56, 189, 248, .08), transparent 58%),
+    var(--bg);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
 }
 
-.page {
-  max-width: 72rem;
-  margin: 0 auto;
-  padding: 2rem 1rem;
+.page { max-width: 1080px; margin: 0 auto; padding: 1.6rem 1.2rem 3rem; }
+
+/* ── hero ───────────────────────────────────────────────────────────── */
+.hero {
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  padding-bottom: 1rem; border-bottom: 1px solid var(--border);
 }
+.brand { display: flex; align-items: center; gap: .8rem; }
+.mark {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, #37e0a2 0%, #0f766e 42%, #0b1220 100%);
+  box-shadow: 0 0 18px rgba(55, 224, 162, .45), inset 0 0 8px rgba(0, 0, 0, .5);
+}
+.hero h1 { margin: 0; font-size: 1.25rem; letter-spacing: .01em; }
+.tagline {
+  margin: 2px 0 0; font-family: var(--mono); font-size: .68rem;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
+}
+.nav { margin-left: auto; display: flex; gap: .5rem; }
+.nav a {
+  color: #7dd3fc; text-decoration: none; font-size: .82rem;
+  padding: .38rem .8rem; border-radius: 999px; border: 1px solid #22304a;
+  transition: all .18s ease;
+}
+.nav a:hover { color: #e2e8f0; border-color: var(--accent); }
+
+/* ── stats ──────────────────────────────────────────────────────────── */
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 1.2rem 0; }
+@media (max-width: 620px) { .stats { grid-template-columns: 1fr; } }
+.stat {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: .8rem 1rem; display: flex; flex-direction: column; gap: 4px;
+}
+.stat-label {
+  font-family: var(--mono); font-size: .62rem; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--muted);
+}
+.stat-value { font-size: 1.35rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+
+/* ── domain chips ───────────────────────────────────────────────────── */
+.domains { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 1rem; }
+.domain-chip {
+  --c: #64748b;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: .7rem; letter-spacing: .06em;
+  padding: .3rem .7rem; border-radius: 999px;
+  color: var(--c); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent);
+  background: color-mix(in srgb, var(--c) 12%, transparent);
+}
+.domain-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); display: inline-block; }
+.domain-chip b { color: #e2e8f0; }
+
+/* ── live feed ──────────────────────────────────────────────────────── */
+.feed { list-style: none; margin: 0; padding: 0; }
+.feed li {
+  --c: #64748b;
+  display: grid;
+  grid-template-columns: 62px 84px minmax(0, 1fr) 92px 90px 46px 78px;
+  align-items: center; gap: 10px;
+  font-family: var(--mono); font-size: .78rem;
+  padding: .5rem .7rem; border-radius: 8px;
+  border-left: 2px solid transparent;
+}
+.feed li:nth-child(odd) { background: rgba(255, 255, 255, .018); }
+.feed li:hover { background: rgba(255, 255, 255, .05); border-left-color: var(--c); }
+.feed .tick { color: #475569; }
+.feed .domain { color: var(--c); font-weight: 600; }
+.feed .type { color: #cbd5e1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed .region { color: #7dd3fc; }
+.feed .sev { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.feed .sev i { display: block; height: 100%; border-radius: 3px; background: var(--c); }
+.feed .value { text-align: right; color: var(--muted); }
+.feed .time { text-align: right; color: #475569; }
+
+.empty {
+  color: var(--muted); font-size: .88rem;
+  background: var(--card); border: 1px dashed var(--border);
+  border-radius: 12px; padding: 1.2rem; text-align: center;
+}
+.empty code { font-family: var(--mono); color: #7dd3fc; }
 
 a { color: var(--accent); }
-
-ul { padding-left: 1.2rem; }

@@ -1,5 +1,5 @@
 import {
-  AfterViewInit, Component, ElementRef, EventEmitter, OnDestroy, Output, inject,
+  AfterViewInit, Component, ElementRef, EventEmitter, OnDestroy, Output, inject, signal,
 } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import * as THREE from 'three';
@@ -61,10 +61,15 @@ const R = 5; // earth radius
     <div class="wrap">
       <div #viewport class="globe"></div>
       <div class="panel">
-        <div class="panel-title">Live regional hot-spots</div>
+        <div class="panel-head">
+          <span class="live"></span>
+          <span class="panel-title">Gaia control</span>
+          <span class="tick" [class.off]="tickIndex() === 0">TICK {{ tickLabel() }}</span>
+        </div>
+        <div class="section-label">Live regional hot-spots</div>
         <div class="rows">
           @for (s of stats; track s.region) {
-            <div class="row">
+            <div class="row" [class.hot]="s.maxSeverity > 0.5">
               <span class="name">{{ s.region }}</span>
               <div class="bar">
                 <div class="fill" [style.width.%]="s.maxSeverity * 100"
@@ -86,20 +91,38 @@ const R = 5; // earth radius
   `,
   styles: [`
     .wrap { position: relative; }
-    .globe { width: 100%; height: 72vh; min-height: 420px; }
+    .globe { width: 100%; height: 72vh; min-height: 420px; border-radius: 12px; overflow: hidden; }
     .panel {
-      position: absolute; top: 14px; right: 14px; width: 250px;
-      background: rgba(4, 10, 22, .72); border: 1px solid rgba(90, 140, 220, .25);
-      border-radius: 10px; padding: 10px 12px; backdrop-filter: blur(6px);
+      position: absolute; top: 14px; right: 14px; width: 262px;
+      background: rgba(4, 10, 22, .78); border: 1px solid rgba(90, 140, 220, .22);
+      border-radius: 12px; padding: 12px 14px; backdrop-filter: blur(10px);
       font-family: ui-monospace, monospace; font-size: 12px; color: #cbd5e1;
+      box-shadow: 0 10px 34px rgba(0, 0, 0, .45);
     }
-    .panel-title { color: #7dd3fc; letter-spacing: .08em; margin-bottom: 8px; font-size: 11px; }
+    .panel-head {
+      display: grid; grid-template-columns: 8px 1fr auto; align-items: center;
+      gap: 8px; margin-bottom: 10px;
+    }
+    .live {
+      width: 8px; height: 8px; border-radius: 50%; background: #37e0a2;
+      box-shadow: 0 0 8px #37e0a2; animation: blink 2s ease-in-out infinite;
+    }
+    @keyframes blink { 50% { opacity: .3; } }
+    .panel-title { color: #7dd3fc; letter-spacing: .14em; text-transform: uppercase;
+      font-size: 10px; font-weight: 600; }
+    .tick { font-size: 10px; color: #94a3b8; letter-spacing: .06em; }
+    .tick.off { color: #475569; }
+    .section-label { font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+      color: #475569; margin-bottom: 8px; }
     .row { display: grid; grid-template-columns: 62px 1fr 26px; align-items: center; gap: 6px; margin: 4px 0; }
+    .row.hot .name { color: #f1f5f9; }
     .name { color: #94a3b8; }
     .bar { height: 7px; background: rgba(255,255,255,.08); border-radius: 4px; overflow: hidden; }
     .fill { height: 100%; border-radius: 4px; transition: width .6s ease; }
-    .val { text-align: right; color: #e2e8f0; }
-    .legend { display: flex; gap: 10px; margin-top: 10px; font-size: 10px; color: #94a3b8; }
+    .val { text-align: right; color: #e2e8f0; font-variant-numeric: tabular-nums; }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 12px;
+      padding-top: 10px; border-top: 1px solid rgba(90, 140, 220, .18);
+      font-size: 10px; color: #94a3b8; }
     .legend .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; }
     .hint { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
       color: #64748b; font-size: 11px; letter-spacing: .05em; }
@@ -112,6 +135,15 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     region: r.region, lat: r.lat, lon: r.lon,
     events: 0, maxSeverity: 0, lastType: '—', lastDomain: '', lastSeenTick: -1,
   }));
+
+  /** Latest tick index reported by /health/sim (0 = ingestion unreachable). */
+  tickIndex = signal(0);
+
+  /** Human-readable tick counter for the HUD. */
+  tickLabel(): string {
+    const t = this.tickIndex();
+    return t === 0 ? '—' : t.toLocaleString('en-US');
+  }
 
   private http = inject(HttpClient);
   private renderer?: THREE.WebGLRenderer;
@@ -215,9 +247,20 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   };
 
   private pollSim(): void {
+    // /health/sim answers plain text ("tick=42 published=900") — parse, don't JSON-decode.
     this.http
-      .get<{ tick: number }>(`${API}/health/sim`)
-      .subscribe({ next: (h) => this.tick.emit(h.tick), error: () => {} });
+      .get(`${API}/health/sim`, { responseType: 'text' })
+      .subscribe({
+        next: (body) => {
+          const matched = /tick=(\d+)/.exec(body);
+          if (matched) {
+            const tick = Number(matched[1]);
+            this.tickIndex.set(tick);
+            this.tick.emit(tick);
+          }
+        },
+        error: () => this.tickIndex.set(0),
+      });
 
     this.http
       .get<SimEventDto[]>(`${API}/events?limit=150`)

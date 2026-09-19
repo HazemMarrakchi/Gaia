@@ -7,6 +7,12 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # Fail fast when the broker is down (default max.block.ms is 60 s, which would
+      # stall the tick loop): the controller then drops into its outage breaker.
+      properties:
+        max.block.ms: 3000
+        request.timeout.ms: 3000
+        delivery.timeout.ms: 6000
 
 gaia:
   tick:

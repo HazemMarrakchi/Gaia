@@ -47,3 +47,11 @@ venv/
 .vscode-server
 .DS_Store
 Thumbs.db
+
+# Local scratch / one-off generation scripts (not part of the repo)
+_*.ts
+_*.txt
+write_*.py
+build_err.txt
+test_out.txt
+pb.txt

@@ -6,6 +6,10 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:56379}
+      # Fail fast when the cache is down: default Lettuce command timeout is 60 s,
+      # which would hang every what-if run. The controller degrades to no-cache.
+      connect-timeout: 2000
+      timeout: 2000
   datasource:
     url: ${POSTGRES_JDBC:jdbc:postgresql://localhost:55432/gaia}
     username: ${POSTGRES_USER:gaia}

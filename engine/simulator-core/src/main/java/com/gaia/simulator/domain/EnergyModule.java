@@ -54,6 +54,13 @@ public final class EnergyModule implements SimModule {
 
     @Override
     public void tick(TickContext ctx) {
+        // 0. Cross-domain coupling: a global crisis (the energy/cities/transport
+        //    severity EMA propagated through TickContext.externalShock by the
+        //    engine) triggers energy-conservation brownouts and a brownout event.
+        double shock = ctx.externalShock();
+        if (shock > 0.1 && !regions.isEmpty()) {
+            emit(ctx, "BROWNOUT", "global", Math.min(1.0, shock), "{}");
+        }
         // 1. Weather: heatwaves build and decay per region (mean-reverting walk).
         if (ctx.rng().nextDouble() < 0.08 && !regions.isEmpty()) {
             String region = regions.get((int) (ctx.rng().nextDouble() * regions.size()));
