@@ -158,7 +158,6 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   private camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 400);
   private controls?: OrbitControls;
   private earth = new THREE.Group();
-  private cloudMesh?: THREE.Mesh;
   private markers = new Map<string, Marker>();
   private pulses: Array<{ mesh: THREE.Mesh; born: number; life: number }> = [];
   private rafId = 0;
@@ -211,8 +210,6 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
 
     this.scene.add(this.buildStars());
     this.earth.add(this.buildEarth());
-    this.earth.add(this.buildClouds());
-    this.scene.add(this.buildAtmosphere());
     REGIONS.forEach((r) => this.addRegionMarker(r));
     this.scene.add(this.earth);
 
@@ -234,10 +231,8 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     }
 
     const loop = () => {
-      const dt = this.clock.getDelta();
       const t = this.clock.elapsedTime;
       this.earth.rotation.y = t * 0.02; // slow planet rotation
-      if (this.cloudMesh) this.cloudMesh.rotation.y += dt * 0.0045;
       this.animateMarkers(t);
       this.animatePulses(t);
       this.updateHover();
@@ -351,51 +346,23 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   }
 
   private buildEarth(): THREE.Mesh {
-    // Use real NASA textures for photorealistic Earth
+    // Real NASA Blue Marble textures for a photorealistic planet
     const day = this.loadTexture('earth_day.jpg', true);
     const night = this.loadTexture('earth_night.jpg', true);
     const normalMap = this.loadTexture('earth_normal.jpg');
-    const specularMap = this.loadTexture('earth_specular.jpg');
 
     const material = new THREE.MeshStandardMaterial({
-      map: day,                    // Real Earth day texture (continents, oceans)
-      normalMap: normalMap,        // Surface detail (mountains, valleys)
-      normalScale: new THREE.Vector2(0.85, 0.85),
-      roughnessMap: specularMap,   // Ocean reflectivity (roughness = inverse of specular)
-      emissiveMap: night,          // City lights at night
-      emissive: new THREE.Color(0xffff88),
-      emissiveIntensity: 0.6,
-      roughness: 0.7,
-      metalness: 0.05,
+      map: day,                    // real satellite day imagery (continents, oceans)
+      normalMap: normalMap,        // terrain relief
+      normalScale: new THREE.Vector2(0.6, 0.6),
+      emissiveMap: night,          // city lights on the dark side
+      emissive: new THREE.Color(0xffdd88),
+      emissiveIntensity: 0.35,
+      roughness: 0.95,
+      metalness: 0.0,
     });
 
     return new THREE.Mesh(new THREE.SphereGeometry(R, 128, 128), material);
-  }
-
-  private buildClouds(): THREE.Mesh {
-    return new THREE.Mesh(
-      new THREE.SphereGeometry(R * 1.015, 96, 96),
-      new THREE.MeshLambertMaterial({
-        map: this.loadTexture('earth_clouds.png', true),
-        transparent: true,
-        opacity: 0.4,
-        depthWrite: false,
-      }),
-    );
-  }
-
-  private buildAtmosphere(): THREE.Mesh {
-    // Simple additive fresnel glow via MeshBasicMaterial on a slightly larger
-    // back-facing sphere — no custom GLSL, works everywhere.
-    const material = new THREE.MeshBasicMaterial({
-      color: 0x3d7bd6,
-      side: THREE.BackSide,
-      blending: THREE.AdditiveBlending,
-      transparent: true,
-      opacity: 0.22,
-      depthWrite: false,
-    });
-    return new THREE.Mesh(new THREE.SphereGeometry(R * 1.14, 64, 64), material);
   }
 
   private buildStars(): THREE.Points {
