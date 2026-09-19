@@ -4,7 +4,6 @@ import {
 import { HttpClient } from '@angular/common/http';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { demoEarthTextures } from '../../demo/gaia-earth.texture';
 import type { DemoWorld } from '../../demo/demo-world.service';
 
 interface SimEventDto {
@@ -166,7 +165,6 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   private pollId = 0;
   private lastEventIds = new Set<string>();
   private demoUnsub?: () => void;
-  private demoTex?: ReturnType<typeof demoEarthTextures>;
   private clock = new THREE.Clock();
   private sunDirection = new THREE.Vector3(1, 0.35, 0.6).normalize();
   private raycaster = new THREE.Raycaster();
@@ -181,7 +179,6 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     const host: HTMLElement = this.el.nativeElement.querySelector('.globe');
-    this.demoTex = this.world ? demoEarthTextures() : undefined;
     try {
       this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     } catch (err) {
@@ -354,28 +351,34 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   }
 
   private buildEarth(): THREE.Mesh {
-    const day = this.demoTex?.day ?? this.loadTexture('earth_atmos_2048.jpg', true);
-    const night = this.demoTex?.night ?? this.loadTexture('earth_lights_2048.png', true);
-    // MeshStandardMaterial with the day texture as diffuse + night lights as emissive.
-    // Reliable on all WebGL versions (no custom GLSL) and still gives a day/night feel.
+    // Use real NASA textures for photorealistic Earth
+    const day = this.loadTexture('earth_day.jpg', true);
+    const night = this.loadTexture('earth_night.jpg', true);
+    const normalMap = this.loadTexture('earth_normal.jpg');
+    const specularMap = this.loadTexture('earth_specular.jpg');
+
     const material = new THREE.MeshStandardMaterial({
-      map: day,
-      emissiveMap: night,
-      emissive: new THREE.Color(0xffaa44),
-      emissiveIntensity: 0.4,
-      roughness: 0.9,
-      metalness: 0.0,
+      map: day,                    // Real Earth day texture (continents, oceans)
+      normalMap: normalMap,        // Surface detail (mountains, valleys)
+      normalScale: new THREE.Vector2(0.85, 0.85),
+      roughnessMap: specularMap,   // Ocean reflectivity (roughness = inverse of specular)
+      emissiveMap: night,          // City lights at night
+      emissive: new THREE.Color(0xffff88),
+      emissiveIntensity: 0.6,
+      roughness: 0.7,
+      metalness: 0.05,
     });
-    return new THREE.Mesh(new THREE.SphereGeometry(R, 96, 96), material);
+
+    return new THREE.Mesh(new THREE.SphereGeometry(R, 128, 128), material);
   }
 
   private buildClouds(): THREE.Mesh {
     return new THREE.Mesh(
-      new THREE.SphereGeometry(R * 1.012, 64, 64),
+      new THREE.SphereGeometry(R * 1.015, 96, 96),
       new THREE.MeshLambertMaterial({
-        map: this.demoTex?.clouds ?? this.loadTexture('earth_clouds_1024.png', true),
+        map: this.loadTexture('earth_clouds.png', true),
         transparent: true,
-        opacity: 0.55,
+        opacity: 0.4,
         depthWrite: false,
       }),
     );

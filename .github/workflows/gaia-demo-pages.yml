@@ -37,9 +37,8 @@ jobs:
       - name: Production demo build
         run: npm run build -- --base-href /Gaia/
 
-      - name: Strip photo textures (demo uses procedural Earth)
+      - name: Prepare 404 fallback for SPA
         run: |
-          rm -rf dist/world-brain/browser/assets/planets
           cp dist/world-brain/browser/index.html dist/world-brain/browser/404.html
           du -sh dist/world-brain/browser
 
