@@ -343,36 +343,15 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   private buildEarth(): THREE.Mesh {
     const day = this.demoTex?.day ?? this.loadTexture('earth_atmos_2048.jpg', true);
     const night = this.demoTex?.night ?? this.loadTexture('earth_lights_2048.png', true);
-    const material = new THREE.ShaderMaterial({
-      uniforms: {
-        dayMap: { value: day },
-        nightMap: { value: night },
-        sunDirection: { value: this.sunDirection },
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        varying vec3 vWorldNormal;
-        void main() {
-          vUv = uv;
-          vWorldNormal = normalize(mat3(modelMatrix) * normal);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D dayMap;
-        uniform sampler2D nightMap;
-        uniform vec3 sunDirection;
-        varying vec2 vUv;
-        varying vec3 vWorldNormal;
-        void main() {
-          vec3 dayColor = texture2D(dayMap, vUv).rgb;
-          vec3 nightColor = texture2D(nightMap, vUv).rgb * 1.5;
-          float sun = dot(normalize(vWorldNormal), normalize(sunDirection));
-          float blend = smoothstep(-0.12, 0.28, sun);
-          vec3 color = mix(nightColor, dayColor * (0.4 + 0.72 * max(sun, 0.0)), blend);
-          gl_FragColor = vec4(color, 1.0);
-        }
-      `,
+    // MeshStandardMaterial with the day texture as diffuse + night lights as emissive.
+    // Reliable on all WebGL versions (no custom GLSL) and still gives a day/night feel.
+    const material = new THREE.MeshStandardMaterial({
+      map: day,
+      emissiveMap: night,
+      emissive: new THREE.Color(0xffd68c),
+      emissiveIntensity: 0.55,
+      roughness: 0.85,
+      metalness: 0.0,
     });
     return new THREE.Mesh(new THREE.SphereGeometry(R, 96, 96), material);
   }
@@ -390,33 +369,14 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   }
 
   private buildAtmosphere(): THREE.Mesh {
-    const material = new THREE.ShaderMaterial({
-      uniforms: { sunDirection: { value: this.sunDirection } },
-      vertexShader: `
-        varying vec3 vNormal;
-        varying vec3 vWorldNormal;
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          vWorldNormal = normalize(mat3(modelMatrix) * normal);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 sunDirection;
-        varying vec3 vNormal;
-        varying vec3 vWorldNormal;
-        void main() {
-          float rim = pow(0.72 - dot(vNormal, vec3(0, 0, 1.0)), 2.6);
-          float sun = dot(normalize(vWorldNormal), normalize(sunDirection));
-          vec3 dayTint = vec3(0.35, 0.58, 1.0);
-          vec3 nightTint = vec3(0.10, 0.18, 0.42);
-          vec3 tint = mix(nightTint, dayTint, smoothstep(-0.3, 0.35, sun));
-          gl_FragColor = vec4(tint, 1.0) * clamp(rim, 0.0, 1.0) * 0.9;
-        }
-      `,
+    // Simple additive fresnel glow via MeshBasicMaterial on a slightly larger
+    // back-facing sphere — no custom GLSL, works everywhere.
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x3d7bd6,
       side: THREE.BackSide,
       blending: THREE.AdditiveBlending,
       transparent: true,
+      opacity: 0.22,
       depthWrite: false,
     });
     return new THREE.Mesh(new THREE.SphereGeometry(R * 1.14, 64, 64), material);
