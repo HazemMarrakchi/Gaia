@@ -456,11 +456,12 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
       (m.halo.material as THREE.MeshBasicMaterial).opacity = active ? 0.55 : 0.25;
 
       // the wave lives ONLY on the point: a small ring that beats outward
-      // from the hot-spot — faster and brighter when the region is hotter
+      // from the hot-spot and BLINKS on/off — faster when the region is hotter
       const cycle = (t * (0.5 + severity * 1.4)) % 1;
       m.ring.scale.setScalar(1 + cycle * 2.4);
+      const blink = Math.sin(t * (3 + severity * 5)) > 0 ? 1 : 0.08;
       (m.ring.material as THREE.MeshBasicMaterial).opacity =
-        (active ? 0.65 : 0.12) * (1 - cycle);
+        (active ? 0.85 : 0.3) * blink;
     }
   }
 
