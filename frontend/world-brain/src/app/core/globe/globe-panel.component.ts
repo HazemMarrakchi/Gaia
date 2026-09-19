@@ -332,41 +332,56 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     }
 
     // pulses only for genuinely new events (poll backfills stay silent)
+    let worldPulseSpawned = false;
     for (const e of fresh.slice(0, 12)) {
       const stat = this.stats.find((s) => s.region === e.region);
       if (stat) {
         this.spawnPulse(stat, false);
-      } else {
-        this.spawnWorldPulse(); // world-scope ("global") event
+      } else if (!worldPulseSpawned) {
+        // at most one shockwave per batch so the planet stays readable
+        this.spawnWorldPulse();
+        worldPulseSpawned = true;
       }
     }
   }
 
   // ── scene construction ────────────────────────────────────────────────
 
-  private loadTexture(path: string, srgb = false): THREE.Texture {
-    const tex = new THREE.TextureLoader().load(`assets/planets/${path}`);
+  private loadTexture(path: string, srgb = false, onLoad?: (tex: THREE.Texture) => void): THREE.Texture {
+    const tex = new THREE.TextureLoader().load(`assets/planets/${path}`, (loaded) => onLoad?.(loaded));
     if (srgb) tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
   }
 
   private buildEarth(): THREE.Mesh {
-    // Use real NASA textures for photorealistic Earth
-    const day = this.loadTexture('earth_day.jpg', true);
-    const night = this.loadTexture('earth_night.jpg', true);
-    const normalMap = this.loadTexture('earth_normal.jpg');
-    const specularMap = this.loadTexture('earth_specular.jpg');
-
+    // Deep-ocean base colour: while the satellite imagery streams in the globe
+    // stays dark blue instead of flashing as a white/grey lit ball.
     const material = new THREE.MeshStandardMaterial({
-      map: day,                    // Real Earth day texture (continents, oceans)
-      normalMap: normalMap,        // Surface detail (mountains, valleys)
-      normalScale: new THREE.Vector2(0.85, 0.85),
-      roughnessMap: specularMap,   // Ocean reflectivity (roughness = inverse of specular)
-      emissiveMap: night,          // City lights at night
-      emissive: new THREE.Color(0xffff88),
-      emissiveIntensity: 0.6,
-      roughness: 0.7,
+      color: 0x0d2f52,
+      roughness: 0.82,
       metalness: 0.05,
+    });
+
+    // Real NASA imagery, attached as soon as each map is decoded.
+    this.loadTexture('earth_day.jpg', true, (day) => {
+      material.map = day;
+      material.color.setHex(0xffffff); // reveal the real continents & oceans
+      material.needsUpdate = true;
+    });
+    this.loadTexture('earth_night.jpg', true, (night) => {
+      material.emissiveMap = night;
+      material.emissive = new THREE.Color(0xffff88);
+      material.emissiveIntensity = 0.6;
+      material.needsUpdate = true;
+    });
+    this.loadTexture('earth_normal.jpg', false, (nrm) => {
+      material.normalMap = nrm;
+      material.normalScale = new THREE.Vector2(0.85, 0.85);
+      material.needsUpdate = true;
+    });
+    this.loadTexture('earth_specular.jpg', false, (spec) => {
+      material.roughnessMap = spec;
+      material.needsUpdate = true;
     });
 
     return new THREE.Mesh(new THREE.SphereGeometry(R, 128, 128), material);
@@ -487,18 +502,31 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   }
 
   private spawnPulse(stat: RegionStat, worldScope: boolean): void {
-    const color = DOMAIN_COLORS[stat.lastDomain] ?? 0x94a3b8;
+    const color = DOMAIN_COLORS[stat.lastDomain] ?? 0x37e0a2;
+
+    if (worldScope) {
+      // Global event → a see-through shockwave SHELL, never a filled ball:
+      // the old opaque grey sphere surrounded the planet and hid it while blinking.
+      const shell = new THREE.Mesh(
+        new THREE.SphereGeometry(R * 1.06, 24, 16),
+        new THREE.MeshBasicMaterial({
+          color, wireframe: true, transparent: true, opacity: 0.3, depthWrite: false,
+        }),
+      );
+      this.earth.add(shell);
+      this.pulses.push({ mesh: shell, born: this.clock.elapsedTime, life: 1.4 });
+      return;
+    }
+
     const pulse = new THREE.Mesh(
-      new THREE.SphereGeometry(worldScope ? R * 1.02 : 0.16, 24, 24),
+      new THREE.SphereGeometry(0.16, 24, 24),
       new THREE.MeshBasicMaterial({
         color, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false,
       }),
     );
-    if (!worldScope) {
-      pulse.position.copy(this.toCartesian(R * 1.02, stat.lat, stat.lon));
-    }
+    pulse.position.copy(this.toCartesian(R * 1.02, stat.lat, stat.lon));
     this.earth.add(pulse);
-    this.pulses.push({ mesh: pulse, born: this.clock.elapsedTime, life: worldScope ? 1.6 : 1.1 });
+    this.pulses.push({ mesh: pulse, born: this.clock.elapsedTime, life: 1.1 });
   }
 
   private spawnWorldPulse(): void {
