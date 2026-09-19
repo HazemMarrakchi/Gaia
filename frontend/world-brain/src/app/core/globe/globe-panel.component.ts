@@ -1,9 +1,11 @@
 import {
-  AfterViewInit, Component, ElementRef, EventEmitter, OnDestroy, Output, inject, signal,
+  AfterViewInit, Component, ElementRef, EventEmitter, Input, OnDestroy, Output, inject, signal,
 } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { demoEarthTextures } from '../../demo/gaia-earth.texture';
+import type { DemoWorld } from '../../demo/demo-world.service';
 
 interface SimEventDto {
   id: string;
@@ -131,6 +133,9 @@ const R = 5; // earth radius
 export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   @Output() tick: EventEmitter<number> = new EventEmitter<number>();
 
+  /** When set, the globe renders an in-browser DemoWorld instead of polling the backend. */
+  @Input() world?: DemoWorld;
+
   stats: RegionStat[] = REGIONS.map((r) => ({
     region: r.region, lat: r.lat, lon: r.lon,
     events: 0, maxSeverity: 0, lastType: '—', lastDomain: '', lastSeenTick: -1,
@@ -157,6 +162,8 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   private rafId = 0;
   private pollId = 0;
   private lastEventIds = new Set<string>();
+  private demoUnsub?: () => void;
+  private demoTex?: ReturnType<typeof demoEarthTextures>;
   private clock = new THREE.Clock();
   private sunDirection = new THREE.Vector3(1, 0.35, 0.6).normalize();
   private raycaster = new THREE.Raycaster();
@@ -171,6 +178,7 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     const host: HTMLElement = this.el.nativeElement.querySelector('.globe');
+    this.demoTex = this.world ? demoEarthTextures() : undefined;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(host.clientWidth, host.clientHeight);
@@ -204,8 +212,13 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     });
     window.addEventListener('resize', this.onResize);
 
-    this.pollId = window.setInterval(() => this.pollSim(), 2000);
-    this.pollSim();
+    if (this.world) {
+      this.demoUnsub = this.world.onUpdate(() => this.syncDemoWorld());
+      this.syncDemoWorld();
+    } else {
+      this.pollId = window.setInterval(() => this.pollSim(), 2000);
+      this.pollSim();
+    }
 
     const loop = () => {
       const dt = this.clock.getDelta();
@@ -226,6 +239,7 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     window.clearInterval(this.pollId);
     window.removeEventListener('resize', this.onResize);
+    this.demoUnsub?.();
     cancelAnimationFrame(this.rafId);
     this.controls?.dispose();
     this.scene.traverse((o) => {
@@ -245,6 +259,23 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(host.clientWidth, host.clientHeight);
   };
+
+  private syncDemoWorld(): void {
+    const world = this.world;
+    if (!world) return;
+    this.tickIndex.set(world.tick());
+    this.tick.emit(world.tick());
+    this.applyEvents(
+      world.events().map((e) => ({
+        id: e.id,
+        tick: e.tick,
+        domain: e.domain,
+        type: e.type,
+        region: e.region,
+        severity: e.severity,
+      })),
+    );
+  }
 
   private pollSim(): void {
     // /health/sim answers plain text ("tick=42 published=900") — parse, don't JSON-decode.
@@ -307,8 +338,8 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   }
 
   private buildEarth(): THREE.Mesh {
-    const day = this.loadTexture('earth_atmos_2048.jpg', true);
-    const night = this.loadTexture('earth_lights_2048.png', true);
+    const day = this.demoTex?.day ?? this.loadTexture('earth_atmos_2048.jpg', true);
+    const night = this.demoTex?.night ?? this.loadTexture('earth_lights_2048.png', true);
     const material = new THREE.ShaderMaterial({
       uniforms: {
         dayMap: { value: day },
@@ -347,7 +378,7 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     return new THREE.Mesh(
       new THREE.SphereGeometry(R * 1.012, 64, 64),
       new THREE.MeshLambertMaterial({
-        map: this.loadTexture('earth_clouds_1024.png', true),
+        map: this.demoTex?.clouds ?? this.loadTexture('earth_clouds_1024.png', true),
         transparent: true,
         opacity: 0.55,
         depthWrite: false,

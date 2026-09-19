@@ -16,7 +16,8 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
           </div>
         </div>
         <nav class="nav">
-          <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Live Globe</a>
+          <a routerLink="/live" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Live Demo</a>
+          <a routerLink="/globe" routerLinkActive="active">Live Globe</a>
           <a routerLink="/scenarios" routerLinkActive="active">Scenarios</a>
           <a routerLink="/replay" routerLinkActive="active">Replay</a>
           <a class="ext" href="http://localhost:3001/d/gaia-live" target="_blank" rel="noopener">Grafana ↗</a>
