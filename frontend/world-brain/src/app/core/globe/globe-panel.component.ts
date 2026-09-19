@@ -93,7 +93,8 @@ const R = 5; // earth radius
   `,
   styles: [`
     .wrap { position: relative; }
-    .globe { width: 100%; height: 72vh; min-height: 420px; border-radius: 12px; overflow: hidden; }
+    .globe { width: 100%; height: 72vh; min-height: 420px; border-radius: 12px; overflow: hidden;
+      background: radial-gradient(ellipse at 50% 40%, #0a1428 0%, #05080f 70%); }
     .panel {
       position: absolute; top: 14px; right: 14px; width: 262px;
       background: rgba(4, 10, 22, .78); border: 1px solid rgba(90, 140, 220, .22);
@@ -180,6 +181,8 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     const host: HTMLElement = this.el.nativeElement.querySelector('.globe');
     this.demoTex = this.world ? demoEarthTextures() : undefined;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    this.renderer.setClearColor(0x000000, 0); // transparent — let the dark page background show through
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(host.clientWidth, host.clientHeight);
     host.appendChild(this.renderer.domElement);
