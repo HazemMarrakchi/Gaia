@@ -21,7 +21,7 @@ describe('AppComponent', () => {
     const links = Array.from(
       fixture.nativeElement.querySelectorAll('.nav a'),
     ).map((a) => (a as HTMLElement).textContent?.trim());
-    expect(links).toEqual(['Live Demo', 'Scenarios', 'Replay', 'Grafana ↗']);
+    expect(links).toEqual(['Mission Control', 'Scenarios', 'Replay', 'Grafana ↗']);
   });
 
   it('renders exactly one router outlet (single globe instance)', () => {
