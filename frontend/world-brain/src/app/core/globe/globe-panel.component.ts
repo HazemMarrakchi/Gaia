@@ -354,34 +354,28 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   }
 
   private buildEarth(): THREE.Mesh {
-    // Deep-ocean base colour: while the satellite imagery streams in the globe
-    // stays dark blue instead of flashing as a white/grey lit ball.
-    const material = new THREE.MeshStandardMaterial({
-      color: 0x0d2f52,
-      roughness: 0.82,
-      metalness: 0.05,
-    });
+    let material: THREE.MeshStandardMaterial | undefined;
 
-    // Real NASA imagery, attached as soon as each map is decoded.
-    this.loadTexture('earth_day.jpg', true, (day) => {
-      material.map = day;
-      material.color.setHex(0xffffff); // reveal the real continents & oceans
-      material.needsUpdate = true;
+    // Satellite maps are attached up-front so the real imagery is always the
+    // base layer; the material only stays deep-ocean blue until they decode.
+    const day = this.loadTexture('earth_day.jpg', true, () => {
+      material?.color.setHex(0xffffff); // real continents & oceans at full strength
     });
-    this.loadTexture('earth_night.jpg', true, (night) => {
-      material.emissiveMap = night;
-      material.emissive = new THREE.Color(0xffff88);
-      material.emissiveIntensity = 0.6;
-      material.needsUpdate = true;
-    });
-    this.loadTexture('earth_normal.jpg', false, (nrm) => {
-      material.normalMap = nrm;
-      material.normalScale = new THREE.Vector2(0.85, 0.85);
-      material.needsUpdate = true;
-    });
-    this.loadTexture('earth_specular.jpg', false, (spec) => {
-      material.roughnessMap = spec;
-      material.needsUpdate = true;
+    const night = this.loadTexture('earth_night.jpg', true);
+    const normalMap = this.loadTexture('earth_normal.jpg', false);
+    const specularMap = this.loadTexture('earth_specular.jpg', false);
+
+    material = new THREE.MeshStandardMaterial({
+      color: 0x0d2f52,             // deep ocean blue while the JPGs stream in
+      map: day,                    // NASA Blue Marble day imagery
+      normalMap,                   // terrain relief
+      normalScale: new THREE.Vector2(0.85, 0.85),
+      roughnessMap: specularMap,   // ocean reflectivity
+      emissiveMap: night,          // city lights
+      emissive: new THREE.Color(0xffff88),
+      emissiveIntensity: 0.6,
+      roughness: 0.7,
+      metalness: 0.05,
     });
 
     return new THREE.Mesh(new THREE.SphereGeometry(R, 128, 128), material);
