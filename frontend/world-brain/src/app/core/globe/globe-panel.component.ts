@@ -60,7 +60,9 @@ const R = 5; // earth radius
   standalone: true,
   template: `
     <div class="wrap">
-      <div #viewport class="globe"></div>
+      <div #viewport class="globe">
+        <div class="hint">drag to orbit · scroll to zoom</div>
+      </div>
       <div class="panel">
         <div class="panel-head">
           <span class="live"></span>
@@ -87,12 +89,11 @@ const R = 5; // earth radius
           <span><i class="dot" style="background:#f472b6"></i>finance</span>
         </div>
       </div>
-      <div class="hint">drag to orbit · scroll to zoom</div>
     </div>
   `,
   styles: [`
     .wrap { position: relative; }
-    .globe { width: 100%; height: 72vh; min-height: 420px; border-radius: 12px; overflow: hidden;
+    .globe { position: relative; width: 100%; height: 72vh; min-height: 420px; border-radius: 12px; overflow: hidden;
       background: radial-gradient(ellipse at 50% 40%, #0a1428 0%, #05080f 70%); }
     .globe.no-webgl { display: flex; align-items: center; justify-content: center; }
     .webgl-fallback { color: #94a3b8; font-size: 14px; text-align: center; line-height: 1.6; }
@@ -129,7 +130,7 @@ const R = 5; // earth radius
       font-size: 10px; color: #94a3b8; }
     .legend .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; }
     .hint { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
-      color: #64748b; font-size: 11px; letter-spacing: .05em; }
+      z-index: 1; pointer-events: none; color: #64748b; font-size: 11px; letter-spacing: .05em; }
 
     /* ── mobile / small screens ───────────────────────────────────────── */
     @media (max-width: 720px) {
