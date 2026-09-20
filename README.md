@@ -135,6 +135,7 @@ so shocks propagated across the system are real and visible in scenarios — not
 
 | What                          | Where                                        | Proof today                |
 |-------------------------------|----------------------------------------------|----------------------------|
+| 🌍 Live public demo (no backend) | `https://hazemmarrakchi.github.io/Gaia/`   | in-browser engine, globe + what-if + replay |
 | Sim events (1M entities, ~1/s) | `http://localhost:8181/events?limit=`        | live                      |
 | Health/tick                   | `http://localhost:8181/health/sim`           | `tick=N published=M`      |
 | Deterministic replay          | `http://localhost:8181/replay?fromTick&toTick` | same seed ⇒ same events + per-tick `state` |
@@ -144,7 +145,7 @@ so shocks propagated across the system are real and visible in scenarios — not
 | Aggregates in PostGIS         | `gaia_domain_aggregates`, `gaia_region_aggregates` | written by the Flink job |
 | Prometheus                    | `http://localhost:9090`                      | ingestion + AI + Flink metrics |
 | Grafana (GAIA-Live dashboard) | `http://localhost:3001/d/gaia-live/gaia-live-platform` | datasource wired |
-| World Brain tests             | `cd frontend/world-brain && npm run test`    | 6 specs, Chrome headless  |
+| World Brain tests             | `cd frontend/world-brain && npm run test`    | 4 specs / 10 tests, Chrome headless |
 
 ## Documentation
 
