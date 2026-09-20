@@ -1,7 +1,7 @@
-// Procedural stylized Earth — replaces the 2 MB photo texture pack in the demo
-// bundle so the GitHub Pages demo ships light (~60 kB gzipped for all JS).
-// Day/night + latitudinal ice caps + subtle cloud bands are generated on an
-// offscreen canvas; markers and gameplay keep the same look as production.
+// Procedural stylized Earth (day/night/clouds) as canvas textures.
+// NOTE: the live globe uses the real NASA photo textures in
+// assets/planets/; this helper is currently unused and kept as a
+// lightweight offline fallback for a future globe build.
 import * as THREE from 'three';
 
 /** Rough continent blobs as (lon, lat, radius, stretch) tuples. */

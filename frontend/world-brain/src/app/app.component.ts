@@ -19,7 +19,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
           <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Mission Control</a>
           <a routerLink="/scenarios" routerLinkActive="active">Scenarios</a>
           <a routerLink="/replay" routerLinkActive="active">Replay</a>
-          <a class="ext" href="http://localhost:3001/d/gaia-live" target="_blank" rel="noopener">Grafana ↗</a>
+          <a class="ext" href="https://github.com/HazemMarrakchi/Gaia#verified-streams--endpoints" target="_blank" rel="noopener">Docs ↗</a>
         </nav>
       </header>
       <router-outlet></router-outlet>
