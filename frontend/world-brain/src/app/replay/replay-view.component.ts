@@ -1,6 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
+import { DemoEngine } from '../demo/gaia-demo.engine';
 
 interface ReplayEvent {
   id?: string;
@@ -39,6 +40,10 @@ const DOMAIN_CSS: Record<string, string> = {
         </div>
         <div class="badge" [class.busy]="loading()">{{ loading() ? 'REPLAYING' : 'READY' }}</div>
       </header>
+
+      @if (offline()) {
+        <p class="demo-note">⚙ Backend not reachable — replaying with the <b>in-browser GAIA engine</b> (deterministic, seed 42).</p>
+      }
 
       <div class="controls">
         <label>
@@ -194,6 +199,13 @@ const DOMAIN_CSS: Record<string, string> = {
     .metrics { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; }
     .metric { font-family: ui-monospace, monospace; font-size: 11px; color: #cbd5e1; }
     .metric b { color: #64748b; font-weight: 500; }
+
+    .demo-note {
+      margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; font-size: .84rem;
+      color: #a5f3d8; background: rgba(55, 224, 162, .07);
+      border: 1px solid rgba(55, 224, 162, .28);
+    }
+    .demo-note b { color: #37e0a2; }
   `],
 })export class ReplayViewComponent {
   private http = inject(HttpClient);
@@ -206,8 +218,14 @@ const DOMAIN_CSS: Record<string, string> = {
   events = signal<ReplayEvent[]>([]);
   loading = signal(false);
   error = signal<string | null>(null);
+  offline = signal(false);
   snapshot = signal<Record<string, Record<string, any>> | null>(null);
   domainFilter = signal<string>('all');
+
+  /** The public GitHub Pages demo has no backend — the in-browser engine takes over. */
+  private get onGitHubPages(): boolean {
+    return typeof window !== 'undefined' && window.location.hostname.endsWith('github.io');
+  }
 
   /** Per-domain event counts across the replayed window (all domains pre-seeded). */
   counts = computed<Record<string, number>>(() => {
@@ -234,7 +252,16 @@ const DOMAIN_CSS: Record<string, string> = {
   load(): void {
     this.loading.set(true);
     this.error.set(null);
+    this.offline.set(false);
     const to = Math.min(this.win + this.span, 10_000);
+
+    // On the public GitHub Pages demo there is no backend — replay the
+    // deterministic in-browser engine instead of failing with a CORS error.
+    if (this.onGitHubPages) {
+      setTimeout(() => this.finishLocalReplay(to), 120);
+      return;
+    }
+
     this.http
       .get<ReplayEvent[]>(`${INGESTION_API}/replay?fromTick=${this.win}&toTick=${to}`)
       .subscribe({
@@ -243,15 +270,35 @@ const DOMAIN_CSS: Record<string, string> = {
           this.events.set(list);
           // Each record carries the domain-state snapshot for its tick.
           this.snapshot.set(list.length ? (list[list.length - 1].state ?? null) : null);
-        },
-        error: () => {
-          this.events.set([]);
-          this.snapshot.set(null);
-          this.error.set('Replay failed - is the ingestion service running on http://localhost:8181 ?');
           this.loading.set(false);
         },
+        error: () => this.finishLocalReplay(to),
         complete: () => this.loading.set(false),
       });
+  }
+
+  /** Deterministic window replayed on the in-browser engine (seed 42). */
+  private finishLocalReplay(to: number): void {
+    const { events, snapshots } = new DemoEngine(42).replay(42, this.win, to);
+    const snap = snapshots.get(to) ?? null;
+    this.events.set(
+      events.map((e) => ({
+        tick: e.tick, domain: e.domain, type: e.type, severity: e.severity, region: e.region,
+      })),
+    );
+    this.snapshot.set(
+      snap
+        ? {
+            energy: { heatwaveIntensity: snap.heatwaveIntensity, outages: snap.outages },
+            cities: { waterLevel: snap.waterLevel, strain: snap.strain },
+            transport: { delay: snap.delay, fuelPriceIndex: snap.fuelPriceIndex },
+            finance: { indexLevel: snap.indexLevel, volatility: snap.volatility, capital: snap.capital },
+          }
+        : null,
+    );
+    this.offline.set(true);
+    this.error.set(null);
+    this.loading.set(false);
   }
 
   domainColor(domain: string): string {

@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { DecimalPipe, KeyValuePipe } from '@angular/common';
 import { timeout, catchError } from 'rxjs/operators';
 import { of } from 'rxjs';
+import { DemoEngine, PerturbationKind } from '../demo/gaia-demo.engine';
 
 interface ScenarioDiff {
   baselineTick: number;
@@ -42,6 +43,10 @@ const DEFAULTS = { baselineTicks: 60, scenarioTicks: 30, entities: 50_000 };
       </div>
       <div class="badge" [class.busy]="running()">{{ running() ? 'RUNNING' : 'IDLE' }}</div>
     </header>
+
+    @if (offline()) {
+      <p class="demo-note">⚙ Backend not reachable — running the what-if on the <b>in-browser GAIA engine</b> (deterministic, seed 42). The full 1M-entity engine runs via docker compose.</p>
+    }
 
     <form class="params" (ngSubmit)="runScenario()">
       <label>
@@ -213,6 +218,13 @@ const DEFAULTS = { baselineTicks: 60, scenarioTicks: 30, entities: 50_000 };
       background: color-mix(in srgb, var(--c) 12%, transparent);
     }
     .actions .rationale { color: #94a3b8; font-size: .84rem; }
+
+    .demo-note {
+      margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; font-size: .84rem;
+      color: #a5f3d8; background: rgba(55, 224, 162, .07);
+      border: 1px solid rgba(55, 224, 162, .28);
+    }
+    .demo-note b { color: #37e0a2; }
   `],
 })
 export class ScenarioRunnerComponent {
@@ -237,6 +249,12 @@ export class ScenarioRunnerComponent {
   diff = signal<ScenarioDiff | null>(null);
   suggestions = signal<SuggestedAction[]>([]);
   error = signal<string | null>(null);
+  offline = signal(false);
+
+  /** The public GitHub Pages demo has no backend — the in-browser engine takes over. */
+  private get onGitHubPages(): boolean {
+    return typeof window !== 'undefined' && window.location.hostname.endsWith('github.io');
+  }
 
   /** Largest absolute delta in the current diff — used to scale the metric bars. */
   maxDelta = computed<number>(() => {
@@ -272,6 +290,8 @@ export class ScenarioRunnerComponent {
     this.error.set(null);
     this.diff.set(null);
     this.suggestions.set([]);
+    this.offline.set(false);
+
     const body = {
       baselineTicks: this.baselineTicks,
       ticks: this.scenarioTicks,
@@ -280,11 +300,23 @@ export class ScenarioRunnerComponent {
       entities: this.entities,
     };
 
+    // On the public GitHub Pages demo there is no backend — run the what-if
+    // on the in-browser engine instead of failing with a CORS error.
+    if (this.onGitHubPages) {
+      setTimeout(() => this.finishLocal(body), 120);
+      return;
+    }
+
     this.http
       .post<ScenarioDiff>(`${SCENARIO_API}/scenarios`, body)
       .pipe(
         timeout(SCENARIO_TIMEOUT_MS),
         catchError((err: unknown) => {
+          // Backend down locally — fall back to the in-browser engine.
+          if (err instanceof HttpErrorResponse && err.status === 0) {
+            this.finishLocal(body);
+            return of(null);
+          }
           this.error.set(this.describeError(err));
           this.running.set(false);
           return of(null);
@@ -299,6 +331,88 @@ export class ScenarioRunnerComponent {
         error: () => this.running.set(false),
         complete: () => this.running.set(false),
       });
+  }
+
+  /** Map the scenario-runner perturbation onto the in-browser engine kinds. */
+  private static readonly PERT_MAP: Record<string, PerturbationKind> = {
+    heatwave: 'heatwave-global',
+    outage: 'outage',
+    strain: 'heatwave-eu',
+    delay: 'heatwave-eu',
+    crash: 'crash',
+    liquidity: 'liquidity',
+  };
+
+  private finishLocal(body: { baselineTicks: number; ticks: number; perturbations: string[]; seed: number }): void {
+    const d = this.runLocalScenario(body);
+    this.offline.set(true);
+    this.diff.set(d);
+    this.suggestions.set(this.localSuggestions(d));
+    this.running.set(false);
+  }
+
+  /** What-if on the deterministic in-browser engine: baseline, perturb, diff. */
+  private runLocalScenario(body: { baselineTicks: number; ticks: number; perturbations: string[]; seed: number }): ScenarioDiff {
+    const engine = new DemoEngine(body.seed);
+    for (let i = 0; i < body.baselineTicks; i++) engine.step();
+    const baseline = engine.snapshot();
+    engine.applyPerturbation(ScenarioRunnerComponent.PERT_MAP[body.perturbations[0]] ?? 'heatwave-global');
+    let eventCount = 0;
+    for (let i = 0; i < body.ticks; i++) eventCount += engine.step().length;
+    const scenario = engine.snapshot();
+
+    const delta = (key: string): number => +((scenario[key] ?? 0) - (baseline[key] ?? 0)).toFixed(3);
+    return {
+      baselineTick: body.baselineTicks,
+      scenarioTicks: body.ticks,
+      scenarioEvents: eventCount,
+      id: `demo-${body.perturbations[0]}-${body.seed}`,
+      diffs: {
+        energy: { heatwaveIntensity: delta('heatwaveIntensity'), outages: delta('outages') },
+        cities: { waterLevel: delta('waterLevel'), strain: delta('strain') },
+        transport: { delay: delta('delay'), fuelPriceIndex: delta('fuelPriceIndex') },
+        finance: { indexLevel: delta('indexLevel'), volatility: delta('volatility'), capital: delta('capital') },
+      },
+      perturbations: body.perturbations,
+    };
+  }
+
+  /** Rule-based intervention hints mirroring the AI service, computed locally. */
+  private localSuggestions(d: ScenarioDiff): SuggestedAction[] {
+    const out: SuggestedAction[] = [];
+    const e = d.diffs['energy'] ?? {};
+    if ((e['outages'] ?? 0) > 0.5 || (e['heatwaveIntensity'] ?? 0) > 0.3) {
+      out.push({
+        action: 'Spin up reserve capacity in the hottest regions',
+        domain: 'energy',
+        rationale: 'heatwave/outage deltas show grid stress building after the injection',
+      });
+    }
+    const c = d.diffs['cities'] ?? {};
+    if ((c['strain'] ?? 0) > 0.2 || (c['waterLevel'] ?? 0) < -0.05) {
+      out.push({
+        action: 'Ration water and open cooling centres in strained districts',
+        domain: 'cities',
+        rationale: 'city strain is rising while water reserves drain',
+      });
+    }
+    const t = d.diffs['transport'] ?? {};
+    if ((t['delay'] ?? 0) > 0.15) {
+      out.push({
+        action: 'Re-route freight away from heat-stressed corridors',
+        domain: 'transport',
+        rationale: 'shipment delay is climbing alongside the fuel price index',
+      });
+    }
+    const f = d.diffs['finance'] ?? {};
+    if ((f['volatility'] ?? 0) > 0.15 || (f['indexLevel'] ?? 0) < -0.5) {
+      out.push({
+        action: 'Inject liquidity and widen stress-test buffers',
+        domain: 'finance',
+        rationale: 'the cross-domain shock is spilling into market volatility',
+      });
+    }
+    return out;
   }
 
   private describeError(err: unknown): string {
