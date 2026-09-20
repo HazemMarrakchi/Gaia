@@ -130,6 +130,24 @@ const R = 5; // earth radius
     .legend .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; }
     .hint { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
       color: #64748b; font-size: 11px; letter-spacing: .05em; }
+
+    /* ── mobile / small screens ───────────────────────────────────────── */
+    @media (max-width: 720px) {
+      .globe { height: 52vh; height: 52svh; min-height: 300px; border-radius: 10px; }
+      .panel {
+        top: 8px; right: 8px; left: 8px; width: auto; max-height: 46%;
+        overflow-y: auto; padding: 9px 11px; border-radius: 10px; font-size: 11px;
+      }
+      .panel-head { margin-bottom: 6px; }
+      .section-label { margin-bottom: 5px; font-size: 9px; }
+      .row { grid-template-columns: 56px 1fr 22px; margin: 2px 0; }
+      .legend { margin-top: 8px; padding-top: 7px; }
+      .hint { font-size: 10px; white-space: nowrap; }
+    }
+    @media (max-width: 720px) and (orientation: landscape) {
+      .globe { height: 72vh; height: 72svh; min-height: 0; }
+      .panel { max-height: 78%; }
+    }
   `],
 })
 export class GlobePanelComponent implements AfterViewInit, OnDestroy {
@@ -168,6 +186,7 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   private raycaster = new THREE.Raycaster();
   private pointer = new THREE.Vector2(-2, -2);
   private hoverRegion: string | null = null;
+  private resizeObserver?: ResizeObserver;
 
   constructor(private el: ElementRef) {}
 
@@ -188,9 +207,12 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     this.renderer.setClearColor(0x000000, 0); // transparent — let the dark page background show through
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(host.clientWidth, host.clientHeight);
+    // Let OrbitControls own the touch gestures (one-finger orbit, pinch zoom)
+    // and stop mobile browsers from hijacking them for scroll/pull-to-refresh.
+    this.renderer.domElement.style.touchAction = 'none';
     host.appendChild(this.renderer.domElement);
 
-    this.camera.position.set(0, 4.2, 15.5);
+    this.camera.position.set(0, 4.2, this.startDistance());
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
@@ -222,6 +244,12 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
       );
     });
     window.addEventListener('resize', this.onResize);
+    // CSS media queries change the globe height without a window resize
+    // (device rotation, devtools device toolbar) — observe the host too.
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(this.onResize);
+      this.resizeObserver.observe(host);
+    }
 
     if (this.world) {
       this.demoUnsub = this.world.onUpdate(() => this.syncDemoWorld());
@@ -249,6 +277,7 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     window.clearInterval(this.pollId);
     window.removeEventListener('resize', this.onResize);
+    this.resizeObserver?.disconnect();
     this.demoUnsub?.();
     cancelAnimationFrame(this.rafId);
     this.controls?.dispose();
@@ -265,10 +294,26 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
   private onResize = () => {
     const host: HTMLElement | null = this.el.nativeElement.querySelector('.globe');
     if (!host || !this.renderer) return;
+    // Cap the pixel ratio again on rotation: some mobile GPUs report a huge
+    // devicePixelRatio in landscape, which makes WebGL crawl.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.camera.aspect = host.clientWidth / Math.max(1, host.clientHeight);
+    // Pull the camera back on narrow screens so the whole planet stays in frame.
+    const want = this.startDistance();
+    if (this.camera.position.length() < want) {
+      this.camera.position.setLength(want);
+    }
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(host.clientWidth, host.clientHeight);
   };
+
+  /**
+   * Camera distance that keeps the whole planet (R=5, fov=42) in frame.
+   * On narrow portrait screens the horizontal FOV shrinks, so we step back.
+   */
+  private startDistance(): number {
+    return Math.min(window.innerWidth, window.innerHeight) < 760 ? 19 : 15.5;
+  }
 
   private syncDemoWorld(): void {
     const world = this.world;

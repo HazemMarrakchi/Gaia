@@ -66,6 +66,24 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
       color: #475569; letter-spacing: .06em;
     }
     .footer .sep { color: #1e293b; }
+
+    /* ── mobile / small screens ───────────────────────────────────────── */
+    @media (max-width: 720px) {
+      .topbar { flex-wrap: wrap; gap: .55rem .75rem; }
+      .mark { width: 24px; height: 24px; }
+      .topbar h1 { font-size: .95rem; }
+      .tagline { font-size: .56rem; letter-spacing: .12em; }
+      .nav {
+        order: 2; width: 100%; margin-left: 0;
+        gap: .4rem; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+      }
+      .nav::-webkit-scrollbar { display: none; }
+      .nav a {
+        flex-shrink: 0; font-size: .78rem;
+        padding: .55rem .85rem; /* ≥ 44px touch target height */
+      }
+      .footer { flex-wrap: wrap; gap: .3rem .45rem; font-size: .62rem; }
+    }
   `],
 })
 export class AppComponent {}

@@ -35,6 +35,25 @@ body {
   min-height: 100vh;
 }
 
+/* ── mobile / small screens ───────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .shell { padding: .7rem .8rem .9rem; }
+
+  .topbar { padding-bottom: .6rem; }
+
+  section > h2 { margin: 1rem 0 .3rem; }
+
+  /* scenario tables can exceed the viewport — let them scroll sideways */
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  th, td { padding: .4rem .55rem; }
+}
+
+/* respect users who prefer fewer animations */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
 /* ── top bar ─────────────────────────────────────────────────────────── */
 .topbar {
   display: flex;

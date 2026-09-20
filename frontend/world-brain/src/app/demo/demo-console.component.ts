@@ -134,6 +134,24 @@ const PERTURBATIONS: Array<{ kind: PerturbationKind; label: string; hint: string
     .log .t { color: #475569; }
     .log .dom { color: var(--c); font-weight: 600; }
     .log .type { color: #cbd5e1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── mobile / small screens ───────────────────────────────────────── */
+    @media (max-width: 720px) {
+      .console { padding: 12px; }
+      .perturbs { grid-template-columns: 1fr 1fr; gap: 6px; }
+      .perturb { padding: 10px 10px; min-height: 48px; }
+      .perturb:hover { transform: none; } /* no hover shift on touch */
+      .p-label { font-size: 11px; }
+      .p-hint { font-size: 9.5px; }
+      .pause { padding: 7px 14px; font-size: 10.5px; min-height: 36px; }
+      .metrics { gap: 2px 10px; }
+      .metric { padding: 6px 0; font-size: 11.5px; }
+      .log { max-height: 200px; }
+      .log li { grid-template-columns: 40px 66px 1fr; gap: 6px; padding: 4px; }
+    }
+    @media (max-width: 380px) {
+      .perturbs { grid-template-columns: 1fr; }
+    }
   `],
 })
 export class DemoConsoleComponent implements OnDestroy {

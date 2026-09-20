@@ -147,6 +147,13 @@ const DEFAULTS = { baselineTicks: 60, scenarioTicks: 30, entities: 50_000 };
       display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 12px;
     }
     @media (max-width: 820px) { .params { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 560px) {
+      .params { grid-template-columns: 1fr; gap: 10px; }
+      /* iOS Safari auto-zooms on inputs under 16px — keep mobile inputs ≥ 16px */
+      .params input, .params select { font-size: 16px; padding: 10px 12px; min-height: 44px; }
+      button { padding: 11px 16px; min-height: 44px; }
+      .actions-row button { flex: 1 1 auto; }
+    }
     .params label span {
       display: block; font-family: ui-monospace, monospace; font-size: 10px;
       letter-spacing: .1em; text-transform: uppercase; color: #7dd3fc; margin-bottom: 6px;
@@ -184,6 +191,7 @@ const DEFAULTS = { baselineTicks: 60, scenarioTicks: 30, entities: 50_000 };
     h3 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 
     .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+    @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
     .card { background: #0b1220; border: 1px solid #1c2940; border-radius: 12px; padding: 12px 14px; }
     .card-head { margin-bottom: 8px; }
     .domain {

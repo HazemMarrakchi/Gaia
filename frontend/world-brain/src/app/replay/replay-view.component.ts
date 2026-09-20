@@ -206,6 +206,26 @@ const DOMAIN_CSS: Record<string, string> = {
       border: 1px solid rgba(55, 224, 162, .28);
     }
     .demo-note b { color: #37e0a2; }
+
+    /* ── mobile / small screens ───────────────────────────────────────── */
+    @media (max-width: 720px) {
+      .controls { grid-template-columns: 1fr; gap: 12px; }
+      input[type=range] { min-height: 32px; } /* fatter touch target */
+      .chips button { padding: 8px 13px; font-size: 12px; } /* ≥ 36px tall */
+      .log { max-height: 40vh; max-height: 40svh; }
+      /* the 6-column desktop row overflows a phone screen — fold it in two */
+      .log li {
+        grid-template-columns: 44px 74px minmax(0, 1fr) 42px;
+        grid-template-areas: "t dom dom sevnum" "type type reg sev";
+        row-gap: 2px; padding: 6px 6px;
+      }
+      .log .t { grid-area: t; }
+      .log .dom { grid-area: dom; }
+      .log .type { grid-area: type; }
+      .log .reg { grid-area: reg; }
+      .log .sev { grid-area: sev; align-self: center; }
+      .log .sevnum { grid-area: sevnum; align-self: start; }
+    }
   `],
 })export class ReplayViewComponent {
   private http = inject(HttpClient);
