@@ -232,8 +232,10 @@ export class GlobePanelComponent implements AfterViewInit, OnDestroy {
     }
 
     const loop = () => {
-      const t = this.clock.elapsedTime;
-      this.earth.rotation.y = t * 0.045; // slow, clearly visible planet rotation
+      // getElapsedTime() advances the clock — without it t stays 0 and the
+      // planet would never rotate (this was the frozen-globe bug)
+      const t = this.clock.getElapsedTime();
+      this.earth.rotation.y = t * 0.06; // slow, clearly visible rotation
       this.animateMarkers(t);
       this.updateHover();
       this.controls?.update();
