@@ -134,19 +134,20 @@ const R = 5; // earth radius
     /* ── mobile / small screens ───────────────────────────────────────── */
     @media (max-width: 720px) {
       .globe { height: 52vh; height: 52svh; min-height: 300px; border-radius: 10px; }
+      /* never cover the planet: the HUD flows below the globe on phones */
       .panel {
-        top: 8px; right: 8px; left: 8px; width: auto; max-height: 46%;
-        overflow-y: auto; padding: 9px 11px; border-radius: 10px; font-size: 11px;
+        position: static; width: auto; margin-top: 10px; max-height: none;
+        padding: 10px 12px; border-radius: 10px; font-size: 11px;
       }
       .panel-head { margin-bottom: 6px; }
       .section-label { margin-bottom: 5px; font-size: 9px; }
+      .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
       .row { grid-template-columns: 56px 1fr 22px; margin: 2px 0; }
       .legend { margin-top: 8px; padding-top: 7px; }
       .hint { font-size: 10px; white-space: nowrap; }
     }
     @media (max-width: 720px) and (orientation: landscape) {
       .globe { height: 72vh; height: 72svh; min-height: 0; }
-      .panel { max-height: 78%; }
     }
   `],
 })
